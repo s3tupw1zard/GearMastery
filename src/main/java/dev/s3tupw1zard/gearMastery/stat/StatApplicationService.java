@@ -11,7 +11,7 @@ import java.util.logging.Logger;
 
 /** Applies stat effects lazily and only once for a level/configuration revision. */
 public final class StatApplicationService {
-    public static final int STAT_SCHEMA = 5;
+    public static final int STAT_SCHEMA = 6;
     private final ConfigurationService configurations; private final GearItemRepository repository; private final StatHandlerRegistry handlers; private final Logger logger;
     public StatApplicationService(final ConfigurationService configurations, final GearItemRepository repository, final StatHandlerRegistry handlers, final Logger logger) { this.configurations = configurations; this.repository = repository; this.handlers = handlers; this.logger = logger; }
     public void synchronizeIfNeeded(final ItemStack item, final GearItemData data) {

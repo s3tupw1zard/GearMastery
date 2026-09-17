@@ -16,15 +16,12 @@ final class AttributeSlotMatcher {
         return targetSlot(equippable.slot());
     }
     static java.util.Optional<EquipmentSlot> targetSlot(final EquipmentSlot slot) {
-        return switch (slot) {
-            case HEAD, CHEST, LEGS, FEET, HAND, OFF_HAND -> java.util.Optional.of(slot);
-            default -> java.util.Optional.empty();
-        };
+        return java.util.Optional.of(slot);
     }
     static EquipmentSlotGroup targetGroup(final EquipmentSlot slot) {
         return switch (slot) {
             case HEAD -> EquipmentSlotGroup.HEAD; case CHEST -> EquipmentSlotGroup.CHEST; case LEGS -> EquipmentSlotGroup.LEGS;
-            case FEET -> EquipmentSlotGroup.FEET; case OFF_HAND -> EquipmentSlotGroup.OFFHAND; default -> EquipmentSlotGroup.MAINHAND;
+            case FEET -> EquipmentSlotGroup.FEET; case OFF_HAND -> EquipmentSlotGroup.OFFHAND; case BODY -> EquipmentSlotGroup.BODY; case SADDLE -> EquipmentSlotGroup.SADDLE; case HAND -> EquipmentSlotGroup.MAINHAND;
         };
     }
 }
