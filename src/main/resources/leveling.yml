@@ -1,0 +1,18 @@
+leveling:
+  max-level: 100
+  default-curve: standard
+
+# XP is required to move from the current level to the next level.
+curves:
+  standard:
+    type: QUADRATIC
+    base-xp: 100
+    growth: 15
+  linear-example:
+    type: LINEAR
+    base-xp: 100
+    growth: 25
+  exponential-example:
+    type: EXPONENTIAL
+    base-xp: 100
+    growth: 1.15
