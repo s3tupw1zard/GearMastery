@@ -41,6 +41,25 @@ class ConfigMigrationServiceTest {
         assertEquals(java.util.List.of("custom"), items.getStringList("profiles.mining_tool.xp-sources"));
         assertEquals("_gearmastery_mining_tool", items.getString("profiles.pickaxes.extends"));
     }
+    @Test void preservesCustomV2LegacyParentBehaviorInsteadOfRewritingItsChildren() throws Exception {
+        write("items.yml", """
+            config-version: 2
+            profiles:
+              mining_tool:
+                items: []
+                xp-sources: []
+                curve: custom
+                stats:
+                  MINING_SPEED: {enabled: true, mode: MULTIPLICATIVE, per-level: 0.05, cap: 4.0}
+              pickaxes:
+                extends: mining_tool
+                items: [DIAMOND_PICKAXE]
+                xp-sources: []
+            """);
+        write("stats.yml", "config-version: 2\ndefaults: {}\n");
+        assertTrue(service().migrateInstalledConfigs());
+        assertEquals("mining_tool", load("items.yml").getString("profiles.pickaxes.extends"));
+    }
     private ConfigMigrationService service() {
         final Map<String, String> defaults = Map.of("items.yml", "config-version: 3\nprofiles:\n  _gearmastery_melee_weapon:\n    items: []\n    xp-sources: []\n  _gearmastery_mining_tool:\n    items: []\n    xp-sources: []\n  swords:\n    extends: _gearmastery_melee_weapon\n    items: []\n    xp-sources: []\n", "stats.yml", "config-version: 3\ndefaults:\n  DURABILITY:\n    enabled: true\n    mode: MULTIPLICATIVE\n    per-level: 0.005\n    cap: 1.5\n");
         final Logger logger = Logger.getAnonymousLogger(); logger.setUseParentHandlers(false);

@@ -17,12 +17,14 @@ public final class StatApplicationService {
     public void synchronizeIfNeeded(final ItemStack item, final GearItemData data) {
         final var configuration = configurations.current();
         if (repository.isStatApplicationCurrent(item, data.level(), configuration.statRevision(), STAT_SCHEMA)) return;
-        final ItemProfile profile = configuration.findProfile(data.profileId()).orElse(null); if (profile == null) return;
+        // A retired profile keeps its progression data, but must not retain effects from its old configuration.
+        final ItemProfile profile = configuration.findProfile(data.profileId()).orElseGet(StatApplicationService::disabledProfile);
         if (applyHandlers(handlers.handlers(), profile, item, data.level(), repository,
             (handler, exception) -> logger.warning("Could not apply " + handler.type() + " for GearMastery item " + data.gearId() + ": " + exception.getMessage()))) {
             repository.markStatApplication(item, data.level(), configuration.statRevision(), STAT_SCHEMA);
         }
     }
+    private static ItemProfile disabledProfile() { return new ItemProfile("_missing_profile", java.util.Set.of(), "", java.util.Set.of(), java.util.Map.of()); }
     static boolean applyHandlers(final Iterable<StatHandler> handlers, final ItemProfile profile, final ItemStack item, final int level,
                                  final GearItemRepository repository, final BiConsumer<StatHandler, RuntimeException> failures) {
         boolean successful = true;

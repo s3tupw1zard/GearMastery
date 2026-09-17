@@ -30,4 +30,14 @@ class StatApplicationServiceTest {
         };
         assertTrue(StatApplicationService.applyHandlers(List.of(handler), PROFILE, null, 1, null, (ignored, exception) -> { }));
     }
+    @Test void missingProfileCleanupUsesDisabledRules() {
+        final AtomicBoolean disabled = new AtomicBoolean(false);
+        final StatHandler handler = new StatHandler() {
+            @Override public StatType type() { return StatType.DURABILITY; }
+            @Override public void apply(final StatApplicationContext context) { disabled.set(!context.rule().enabled()); }
+        };
+        final ItemProfile missing = new ItemProfile("_missing_profile", Set.of(), "", Set.of(), Map.of());
+        assertTrue(StatApplicationService.applyHandlers(List.of(handler), missing, null, 0, null, (ignored, exception) -> { }));
+        assertTrue(disabled.get());
+    }
 }

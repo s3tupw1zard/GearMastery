@@ -86,6 +86,13 @@ class ConfigurationReloadValidationTest {
         assertTrue(service().reload(), "endpoint validation must support very large configured level bounds");
     }
 
+    @Test void rejectsAnAliasThatShadowsAnActiveProfile() {
+        final ItemProfile pickaxes = profile("pickaxes", Set.of()); final ItemProfile swords = profile("swords", Set.of());
+        final IllegalArgumentException exception = org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+            () -> ConfigurationService.validateAliases(Map.of("pickaxes", pickaxes, "swords", swords), Map.of("pickaxes", "swords")));
+        assertTrue(exception.getMessage().contains("shadows"));
+    }
+
     private ConfigurationService service() {
         final Logger logger = Logger.getAnonymousLogger(); logger.setUseParentHandlers(false);
         return new ConfigurationService(directory.toFile(), logger);

@@ -63,8 +63,24 @@ public final class ConfigMigrationService {
             final ConfigurationSection child = profiles.getConfigurationSection(leaf); if (child == null) return;
             final String legacy = child.getString("extends"); if (legacy == null || !Map.of("mining_tool", "_gearmastery_mining_tool", "melee_weapon", "_gearmastery_melee_weapon", "combat_tool", "_gearmastery_combat_tool", "armor_piece", "_gearmastery_armor_piece").containsKey(legacy)) return;
             final ConfigurationSection parent = profiles.getConfigurationSection(legacy);
-            if (parent != null && parent.getStringList("items").isEmpty() && parent.getStringList("xp-sources").isEmpty()) child.set("extends", reserved);
+            final ConfigurationSection bundledParent = profiles.getConfigurationSection(reserved);
+            if (parent != null && bundledParent != null && semanticallyEquivalentLegacyParent(parent, bundledParent, legacy)) child.set("extends", reserved);
         });
+    }
+    /** A legacy link is rewritten only when every known and unknown parent value matches the bundled V2 parent. */
+    private static boolean semanticallyEquivalentLegacyParent(final ConfigurationSection actual, final ConfigurationSection bundled, final String legacyId) {
+        return canonical(actual, true, legacyId).equals(canonical(bundled, false, legacyId));
+    }
+    private static Object canonical(final ConfigurationSection section, final boolean actual, final String legacyId) {
+        final Map<String, Object> values = new java.util.TreeMap<>();
+        for (final String key : section.getKeys(false)) {
+            final ConfigurationSection nested = section.getConfigurationSection(key);
+            Object value = nested == null ? section.get(key) : canonical(nested, actual, legacyId);
+            if (!actual && key.equals("extends") && value instanceof String parent) value = parent.replace("_gearmastery_", "");
+            if (value instanceof java.util.List<?> list) value = list.stream().map(String::valueOf).sorted().toList();
+            values.put(key, value);
+        }
+        return values;
     }
     private static void mergeMissing(final ConfigurationSection defaults, final ConfigurationSection target) {
         for (final String key : defaults.getKeys(false)) {

@@ -10,32 +10,41 @@ public final class MiningSpeedStatHandler implements StatHandler {
     @Override public void apply(final StatApplicationContext context) {
         final Tool current = context.item().getData(DataComponentTypes.TOOL); if (current == null) return;
         final GearItemRepository repository = context.repository();
-        final java.util.Map<String, ToolRuleBaseline.Snapshot> prior = snapshots(repository.toolRuleSnapshots(context.item()).orElse(""));
+        final java.util.List<ToolRuleBaseline.Snapshot> prior = snapshots(repository.toolRuleSnapshots(context.item()).orElse(""));
         final java.util.List<ToolRuleBaseline.Snapshot> applied = new java.util.ArrayList<>();
+        final java.util.Set<ToolRuleBaseline.Snapshot> consumed = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
         final float defaultSpeed = ToolRuleBaseline.select(current.defaultMiningSpeed(), repository.baselineToolDefaultSpeed(context.item()).orElse(null), repository.expectedToolDefaultSpeed(context.item()).orElse(null));
-        repository.baselineToolDefaultSpeed(context.item(), defaultSpeed);
-        final float scaledDefault = (float) StatValueCalculator.calculate(defaultSpeed, context.level(), context.rule());
-        repository.expectedToolDefaultSpeed(context.item(), scaledDefault);
+        final float scaledDefault = ToolSpeedValue.requireValid(StatValueCalculator.calculate(defaultSpeed, context.level(), context.rule()), "default mining speed");
         final Tool.Builder builder = Tool.tool().defaultMiningSpeed(scaledDefault).damagePerBlock(current.damagePerBlock()).canDestroyBlocksInCreative(current.canDestroyBlocksInCreative());
         for (final Tool.Rule rule : current.rules()) {
-            final String identity = identity(rule); final ToolRuleBaseline.Snapshot priorRule = prior.get(identity);
-            final Float baseline = priorRule != null ? ToolRuleBaseline.select(rule.speed(), priorRule.baselineSpeed(), priorRule.expectedSpeed()) : ToolRuleBaseline.selectStructural(rule.speed(), prior.values().stream().toList());
-            if (baseline != null) repository.baselineToolRuleSpeed(context.item(), identity, baseline);
-            final Float scaled = baseline == null ? null : (float) StatValueCalculator.calculate(baseline, context.level(), context.rule());
-            if (scaled != null) { repository.expectedToolRuleSpeed(context.item(), identity, scaled); applied.add(new ToolRuleBaseline.Snapshot(identity, baseline, scaled)); }
+            final String identity = identity(rule); final ToolRuleBaseline.Snapshot priorRule = match(identity, rule.speed(), prior, consumed);
+            final Float baseline = priorRule != null ? ToolRuleBaseline.select(rule.speed(), priorRule.baselineSpeed(), priorRule.expectedSpeed()) : ToolRuleBaseline.selectStructural(rule.speed(), prior.stream().filter(snapshot -> !consumed.contains(snapshot)).toList());
+            final Float scaled = baseline == null ? null : ToolSpeedValue.requireValid(StatValueCalculator.calculate(baseline, context.level(), context.rule()), "rule " + identity);
+            if (scaled != null) applied.add(new ToolRuleBaseline.Snapshot(identity, baseline, scaled));
             builder.addRule(Tool.rule(rule.blocks(), scaled, rule.correctForDrops()));
         }
+        // Commit only after every rule and the rebuilt component have passed validation.
+        final Tool rebuilt = builder.build();
+        repository.baselineToolDefaultSpeed(context.item(), defaultSpeed);
+        repository.expectedToolDefaultSpeed(context.item(), scaledDefault);
         repository.toolRuleSnapshots(context.item(), serialize(applied));
-        context.item().setData(DataComponentTypes.TOOL, builder.build());
+        context.item().setData(DataComponentTypes.TOOL, rebuilt);
     }
     static String identity(final Tool.Rule rule) {
         final String blocks = rule.blocks().values().stream().map(key -> key.key().asString()).sorted().collect(java.util.stream.Collectors.joining(","));
         return blocks + '|' + rule.correctForDrops();
     }
-    private static java.util.Map<String, ToolRuleBaseline.Snapshot> snapshots(final String encoded) {
-        final java.util.Map<String, ToolRuleBaseline.Snapshot> result = new java.util.HashMap<>();
-        for (final String entry : encoded.split(";")) { final String[] parts = entry.split("\\|", 3); if (parts.length == 3) try { final String identity = new String(java.util.Base64.getUrlDecoder().decode(parts[0]), java.nio.charset.StandardCharsets.UTF_8); result.put(identity, new ToolRuleBaseline.Snapshot(identity, Float.parseFloat(parts[1]), Float.parseFloat(parts[2]))); } catch (final IllegalArgumentException ignored) { } }
+    static java.util.List<ToolRuleBaseline.Snapshot> snapshots(final String encoded) {
+        final java.util.List<ToolRuleBaseline.Snapshot> result = new java.util.ArrayList<>();
+        for (final String entry : encoded.split(";")) { final String[] parts = entry.split("\\|", 3); if (parts.length == 3) try { final String identity = new String(java.util.Base64.getUrlDecoder().decode(parts[0]), java.nio.charset.StandardCharsets.UTF_8); result.add(new ToolRuleBaseline.Snapshot(identity, Float.parseFloat(parts[1]), Float.parseFloat(parts[2]))); } catch (final IllegalArgumentException ignored) { } }
         return result;
     }
-    private static String serialize(final java.util.List<ToolRuleBaseline.Snapshot> snapshots) { return snapshots.stream().map(snapshot -> java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(snapshot.identity().getBytes(java.nio.charset.StandardCharsets.UTF_8)) + "|" + snapshot.baselineSpeed() + "|" + snapshot.expectedSpeed()).collect(java.util.stream.Collectors.joining(";")); }
+    static String serialize(final java.util.List<ToolRuleBaseline.Snapshot> snapshots) { return snapshots.stream().map(snapshot -> java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(snapshot.identity().getBytes(java.nio.charset.StandardCharsets.UTF_8)) + "|" + snapshot.baselineSpeed() + "|" + snapshot.expectedSpeed()).collect(java.util.stream.Collectors.joining(";")); }
+    private static ToolRuleBaseline.Snapshot match(final String identity, final Float visible, final java.util.List<ToolRuleBaseline.Snapshot> prior, final java.util.Set<ToolRuleBaseline.Snapshot> consumed) {
+        final java.util.List<ToolRuleBaseline.Snapshot> exact = prior.stream().filter(snapshot -> !consumed.contains(snapshot) && snapshot.identity().equals(identity)).toList();
+        final java.util.List<ToolRuleBaseline.Snapshot> expected = exact.stream().filter(snapshot -> java.util.Objects.equals(snapshot.expectedSpeed(), visible)).toList();
+        final ToolRuleBaseline.Snapshot match = expected.size() == 1 ? expected.getFirst() : exact.size() == 1 ? exact.getFirst() : null;
+        if (match != null) consumed.add(match);
+        return match;
+    }
 }

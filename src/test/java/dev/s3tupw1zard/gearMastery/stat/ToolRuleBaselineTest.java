@@ -22,4 +22,12 @@ class ToolRuleBaselineTest {
         assertEquals(8.0F, ToolRuleBaseline.selectStructural(10.0F, previous));
         assertEquals(15.0F, ToolRuleBaseline.selectStructural(15.0F, previous));
     }
+    @Test void snapshotSerializationPreservesDuplicateIdentitiesAndOrder() {
+        final var original = java.util.List.of(new ToolRuleBaseline.Snapshot("stone|true", 8.0F, 10.0F), new ToolRuleBaseline.Snapshot("stone|true", 12.0F, 15.0F));
+        assertEquals(original, MiningSpeedStatHandler.snapshots(MiningSpeedStatHandler.serialize(original)));
+    }
+    @Test void structuralMatchingDoesNotReuseAnAmbiguousDuplicate() {
+        final var duplicate = java.util.List.of(new ToolRuleBaseline.Snapshot("a", 8.0F, 10.0F), new ToolRuleBaseline.Snapshot("a", 12.0F, 10.0F));
+        assertEquals(10.0F, ToolRuleBaseline.selectStructural(10.0F, duplicate));
+    }
 }

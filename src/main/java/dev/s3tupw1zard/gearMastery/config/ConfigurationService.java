@@ -45,6 +45,7 @@ public final class ConfigurationService {
         validateCurves(curves, maxLevel);
         final Map<Material, String> overrides = materialProfileMap(items.getConfigurationSection("material-overrides"));
         final Map<String, String> aliases = stringMap(items.getConfigurationSection("profile-aliases"));
+        validateAliases(profiles, aliases);
         for (final String profileId : overrides.values()) if (!profiles.containsKey(profileId)) throw new IllegalArgumentException("Override references unknown profile: " + profileId);
         for (final String profileId : aliases.values()) if (!profiles.containsKey(profileId)) throw new IllegalArgumentException("Alias references unknown profile: " + profileId);
         final Map<Material, String> materialProfiles = materialProfileIndex(profiles, overrides);
@@ -82,6 +83,10 @@ public final class ConfigurationService {
         }
         for (final Map.Entry<Material, String> entry : overrides.entrySet()) index.put(entry.getKey(), entry.getValue());
         return index;
+    }
+    static void validateAliases(final Map<String, ItemProfile> profiles, final Map<String, String> aliases) {
+        for (final String legacyId : aliases.keySet()) if (profiles.containsKey(legacyId)) throw new IllegalArgumentException("Alias shadows active profile: " + legacyId);
+        for (final String profileId : aliases.values()) if (!profiles.containsKey(profileId)) throw new IllegalArgumentException("Alias references unknown profile: " + profileId);
     }
     static long statRevision(final Map<String, ItemProfile> profiles, final Map<Material, String> materialProfiles, final Map<String, String> aliases) {
         final StringBuilder canonical = new StringBuilder();
