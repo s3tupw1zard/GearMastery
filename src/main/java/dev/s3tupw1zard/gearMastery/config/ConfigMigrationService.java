@@ -33,8 +33,9 @@ public final class ConfigMigrationService {
             for (final String name : new String[] {"items.yml", "stats.yml"}) {
                 final File file = new File(dataFolder, name); if (!file.isFile()) continue;
                 final YamlConfiguration current = load(file); final int version = current.getInt("config-version", 1); if (version >= CURRENT_VERSION) continue;
-                final YamlConfiguration defaults = loadDefault(name); mergeMissing(defaults, current);
-                if (name.equals("items.yml")) { if (version == 2) migrateSafeLegacyParentLinks(current); addMissingProfileParents(current); }
+                final YamlConfiguration defaults = loadDefault(name);
+                if (version == 1) { mergeMissing(defaults, current); if (name.equals("items.yml")) addMissingProfileParents(current); }
+                if (version == 2 && name.equals("items.yml")) { addReservedProfiles(defaults, current); migrateSafeLegacyParentLinks(current); }
                 current.set("config-version", CURRENT_VERSION); migrated.put(name, current); sourceVersions.put(name, version);
             }
             if (migrated.isEmpty()) return true;
@@ -52,6 +53,10 @@ public final class ConfigMigrationService {
         } catch (final IOException | InvalidConfigurationException exception) {
             logger.log(java.util.logging.Level.SEVERE, "GearMastery configuration migration failed: " + exception.getMessage(), exception); return false;
         }
+    }
+    private static void addReservedProfiles(final YamlConfiguration defaults, final YamlConfiguration current) {
+        final ConfigurationSection source = defaults.getConfigurationSection("profiles"), target = current.getConfigurationSection("profiles"); if (source == null || target == null) return;
+        for (final String id : source.getKeys(false)) if (id.startsWith("_gearmastery_") && !target.contains(id)) mergeMissing(source.getConfigurationSection(id), target.createSection(id));
     }
     private static void addMissingProfileParents(final YamlConfiguration configuration) {
         final ConfigurationSection profiles = configuration.getConfigurationSection("profiles"); if (profiles == null) return;

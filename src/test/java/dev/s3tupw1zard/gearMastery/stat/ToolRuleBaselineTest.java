@@ -39,4 +39,10 @@ class ToolRuleBaselineTest {
         }
         assertEquals(3, consumed.size());
     }
+    @Test void consumedExactSnapshotCannotBeUsedByStructuralFallback() {
+        final var prior = java.util.List.of(new ToolRuleBaseline.Snapshot("a", 8.0F, 10.0F));
+        final var consumed = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<ToolRuleBaseline.Snapshot, Boolean>());
+        assertEquals(8.0F, MiningSpeedStatHandler.match("a", 10.0F, prior, consumed).baselineSpeed());
+        assertNull(ToolRuleBaseline.structuralMatch(10.0F, prior.stream().filter(snapshot -> !consumed.contains(snapshot)).toList()));
+    }
 }

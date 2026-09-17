@@ -12,5 +12,10 @@ final class ToolRuleBaseline {
         final java.util.List<Snapshot> matches = snapshots.stream().filter(snapshot -> Float.compare(snapshot.expectedSpeed(), visibleSpeed) == 0).toList();
         return matches.size() == 1 ? matches.getFirst().baselineSpeed() : visibleSpeed;
     }
+    static Snapshot structuralMatch(final Float visibleSpeed, final java.util.List<Snapshot> snapshots) {
+        if (visibleSpeed == null) return null;
+        final java.util.List<Snapshot> matches = snapshots.stream().filter(snapshot -> Float.compare(snapshot.expectedSpeed(), visibleSpeed) == 0).toList();
+        return matches.size() == 1 ? matches.getFirst() : null;
+    }
     record Snapshot(String identity, float baselineSpeed, float expectedSpeed) { }
 }

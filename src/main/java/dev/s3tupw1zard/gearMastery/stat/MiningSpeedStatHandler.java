@@ -13,12 +13,15 @@ public final class MiningSpeedStatHandler implements StatHandler {
         final java.util.List<ToolRuleBaseline.Snapshot> prior = snapshots(repository.toolRuleSnapshots(context.item()).orElse(""));
         final java.util.List<ToolRuleBaseline.Snapshot> applied = new java.util.ArrayList<>();
         final java.util.Set<ToolRuleBaseline.Snapshot> consumed = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        final java.util.List<ToolRuleBaseline.Snapshot> exact = reserveExact(current.rules(), prior, consumed);
         final float defaultSpeed = ToolRuleBaseline.select(current.defaultMiningSpeed(), repository.baselineToolDefaultSpeed(context.item()).orElse(null), repository.expectedToolDefaultSpeed(context.item()).orElse(null));
         final float scaledDefault = ToolSpeedValue.requireValid(StatValueCalculator.calculate(defaultSpeed, context.level(), context.rule()), "default mining speed");
         final Tool.Builder builder = Tool.tool().defaultMiningSpeed(scaledDefault).damagePerBlock(current.damagePerBlock()).canDestroyBlocksInCreative(current.canDestroyBlocksInCreative());
-        for (final Tool.Rule rule : current.rules()) {
-            final String identity = identity(rule); final ToolRuleBaseline.Snapshot priorRule = match(identity, rule.speed(), prior, consumed);
-            final Float baseline = priorRule != null ? ToolRuleBaseline.select(rule.speed(), priorRule.baselineSpeed(), priorRule.expectedSpeed()) : ToolRuleBaseline.selectStructural(rule.speed(), prior.stream().filter(snapshot -> !consumed.contains(snapshot)).toList());
+        for (int index = 0; index < current.rules().size(); index++) { final Tool.Rule rule = current.rules().get(index);
+            final String identity = identity(rule); final ToolRuleBaseline.Snapshot priorRule = exact.get(index);
+            final ToolRuleBaseline.Snapshot structural = priorRule == null ? ToolRuleBaseline.structuralMatch(rule.speed(), prior.stream().filter(snapshot -> !consumed.contains(snapshot)).toList()) : null;
+            if (structural != null) consumed.add(structural);
+            final Float baseline = priorRule != null ? ToolRuleBaseline.select(rule.speed(), priorRule.baselineSpeed(), priorRule.expectedSpeed()) : structural != null ? structural.baselineSpeed() : rule.speed();
             final Float scaled = baseline == null ? null : ToolSpeedValue.requireValid(StatValueCalculator.calculate(baseline, context.level(), context.rule()), "rule " + identity);
             if (scaled != null) applied.add(new ToolRuleBaseline.Snapshot(identity, baseline, scaled));
             builder.addRule(Tool.rule(rule.blocks(), scaled, rule.correctForDrops()));
@@ -47,5 +50,10 @@ public final class MiningSpeedStatHandler implements StatHandler {
         final ToolRuleBaseline.Snapshot match = !expected.isEmpty() ? expected.getFirst() : exact.size() == 1 ? exact.getFirst() : null;
         if (match != null) consumed.add(match);
         return match;
+    }
+    private static java.util.List<ToolRuleBaseline.Snapshot> reserveExact(final java.util.List<Tool.Rule> rules, final java.util.List<ToolRuleBaseline.Snapshot> prior, final java.util.Set<ToolRuleBaseline.Snapshot> consumed) {
+        final java.util.List<ToolRuleBaseline.Snapshot> result = new java.util.ArrayList<>();
+        for (final Tool.Rule rule : rules) result.add(match(identity(rule), rule.speed(), prior, consumed));
+        return result;
     }
 }

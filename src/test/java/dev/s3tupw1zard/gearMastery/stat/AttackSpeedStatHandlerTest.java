@@ -17,4 +17,7 @@ class AttackSpeedStatHandlerTest {
         assertEquals(0.5D, AttackSpeedStatHandler.effectiveBonus(2.0D, 5, new StatRule(true, StatScaleMode.ADDITIVE, 0.1D, 3.0D)));
         assertEquals(0.0D, AttackSpeedStatHandler.effectiveBonus(1.6D, 10, new StatRule(false, StatScaleMode.MULTIPLICATIVE, 0.01D, 2.0D)));
     }
+    @Test void derivesAStableOffHandKeyForCustomEquippableItems() {
+        assertEquals("attack_speed_offhand", GearModifierKeys.current(StatType.ATTACK_SPEED, org.bukkit.inventory.EquipmentSlot.OFF_HAND).getKey());
+    }
 }

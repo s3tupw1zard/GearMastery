@@ -48,6 +48,8 @@ public final class GearItemRepository {
     public void baselineMaxDamage(final ItemStack item, final int value) { set(item, baselineMaxDamage, PersistentDataType.INTEGER, value); }
     public Optional<Double> baselineAttackSpeedEffective(final ItemStack item) { return optional(item, baselineAttackSpeedEffective, PersistentDataType.DOUBLE); }
     public void baselineAttackSpeedEffective(final ItemStack item, final double value) { set(item, baselineAttackSpeedEffective, PersistentDataType.DOUBLE, value); }
+    public Optional<String> baselineAttackSpeedSlot(final ItemStack item) { return optional(item, new NamespacedKey("gearmastery", "baseline-slot-attack-speed"), PersistentDataType.STRING); }
+    public void baselineAttackSpeedSlot(final ItemStack item, final String slot) { set(item, new NamespacedKey("gearmastery", "baseline-slot-attack-speed"), PersistentDataType.STRING, slot); }
     public Optional<Float> baselineToolDefaultSpeed(final ItemStack item) { return optional(item, baselineToolDefaultSpeed, PersistentDataType.FLOAT); }
     public void baselineToolDefaultSpeed(final ItemStack item, final float value) { set(item, baselineToolDefaultSpeed, PersistentDataType.FLOAT, value); }
     public Optional<Integer> baselineToolRuleCount(final ItemStack item) { return optional(item, baselineToolRuleCount, PersistentDataType.INTEGER); }
