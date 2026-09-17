@@ -11,19 +11,21 @@ import java.util.logging.Logger;
 
 /** Applies stat effects lazily and only once for a level/configuration revision. */
 public final class StatApplicationService {
-    public static final int STAT_SCHEMA = 3;
+    public static final int STAT_SCHEMA = 4;
     private final ConfigurationService configurations; private final GearItemRepository repository; private final StatHandlerRegistry handlers; private final Logger logger;
     public StatApplicationService(final ConfigurationService configurations, final GearItemRepository repository, final StatHandlerRegistry handlers, final Logger logger) { this.configurations = configurations; this.repository = repository; this.handlers = handlers; this.logger = logger; }
     public void synchronizeIfNeeded(final ItemStack item, final GearItemData data) {
         final var configuration = configurations.current();
-        if (repository.isStatApplicationCurrent(item, data.level(), configuration.statRevision(), STAT_SCHEMA)) return;
+        final int effectiveLevel = effectiveStatLevel(data.level(), configuration.maxLevel());
+        if (repository.isStatApplicationCurrent(item, effectiveLevel, configuration.statRevision(), STAT_SCHEMA)) return;
         // A retired profile keeps its progression data, but must not retain effects from its old configuration.
         final ItemProfile profile = configuration.findProfile(data.profileId()).orElseGet(StatApplicationService::disabledProfile);
-        if (applyHandlers(handlers.handlers(), profile, item, data.level(), repository,
+        if (applyHandlers(handlers.handlers(), profile, item, effectiveLevel, repository,
             (handler, exception) -> logger.warning("Could not apply " + handler.type() + " for GearMastery item " + data.gearId() + ": " + exception.getMessage()))) {
-            repository.markStatApplication(item, data.level(), configuration.statRevision(), STAT_SCHEMA);
+            repository.markStatApplication(item, effectiveLevel, configuration.statRevision(), STAT_SCHEMA);
         }
     }
+    static int effectiveStatLevel(final int storedLevel, final int configuredMaximum) { return Math.min(storedLevel, configuredMaximum); }
     private static ItemProfile disabledProfile() { return new ItemProfile("_missing_profile", java.util.Set.of(), "", java.util.Set.of(), java.util.Map.of()); }
     static boolean applyHandlers(final Iterable<StatHandler> handlers, final ItemProfile profile, final ItemStack item, final int level,
                                  final GearItemRepository repository, final BiConsumer<StatHandler, RuntimeException> failures) {

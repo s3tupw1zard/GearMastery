@@ -9,10 +9,17 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class StatApplicationServiceTest {
     private static final ItemProfile PROFILE = new ItemProfile("test", Set.of(), "standard", Set.of(), Map.of());
+    @Test void clampsOnlyTheRuntimeStatLevelToTheConfiguredMaximum() {
+        assertEquals(50, StatApplicationService.effectiveStatLevel(100, 50));
+        assertEquals(80, StatApplicationService.effectiveStatLevel(100, 80));
+        assertEquals(100, StatApplicationService.effectiveStatLevel(100, 100));
+        assertEquals(20, StatApplicationService.effectiveStatLevel(20, 50));
+    }
     @Test void aFailurePreventsCompletionAndTheNextAttemptCanSucceed() {
         final AtomicBoolean broken = new AtomicBoolean(true);
         final StatHandler handler = new StatHandler() {

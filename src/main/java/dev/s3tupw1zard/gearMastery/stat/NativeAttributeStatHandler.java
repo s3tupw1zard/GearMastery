@@ -15,22 +15,29 @@ public final class NativeAttributeStatHandler implements StatHandler {
         final GearItemRepository repository = context.repository();
         final ItemAttributeModifiers existing = context.item().getData(DataComponentTypes.ATTRIBUTE_MODIFIERS);
         if (existing == null) return;
-        final var targetSlot = AttributeSlotMatcher.targetSlot(context.item().getType().name());
-        final var modifierKey = GearModifierKeys.current(type, targetSlot); final var legacyKey = GearModifierKeys.legacy(type);
-        final var storedBaseline = repository.baseline(context.item(), type);
+        final var targetSlot = AttributeSlotMatcher.targetSlot(context.item());
+        if (targetSlot.isEmpty()) { removeOwned(existing, context.item(), type); return; }
+        final var slot = targetSlot.get();
+        final var modifierKey = GearModifierKeys.current(type, slot);
+        final var storedBaseline = repository.baselineSlot(context.item(), type).filter(slot.name()::equals).flatMap(ignored -> repository.baseline(context.item(), type));
         final double baseline = storedBaseline.orElseGet(() -> {
             final double captured = existing.modifiers().stream().filter(entry -> entry.attribute().equals(attribute))
-                .filter(entry -> !entry.modifier().getKey().equals(modifierKey) && !entry.modifier().getKey().equals(legacyKey))
+                .filter(entry -> !GearModifierKeys.owns(entry.modifier().getKey(), type))
                 .filter(entry -> entry.modifier().getOperation() == AttributeModifier.Operation.ADD_NUMBER)
-                .filter(entry -> AttributeSlotMatcher.appliesTo(entry.getGroup(), targetSlot))
+                .filter(entry -> AttributeSlotMatcher.appliesTo(entry.getGroup(), slot))
                 .mapToDouble(entry -> entry.modifier().getAmount()).sum(); return captured;
         });
         final double delta = context.rule().enabled() ? AttributeModifierValue.requireFinite(StatDeltaCalculator.delta(baseline, context.level(), context.rule()), type) : 0.0D;
         final ItemAttributeModifiers.Builder builder = ItemAttributeModifiers.itemAttributes();
-        existing.modifiers().stream().filter(entry -> !entry.modifier().getKey().equals(modifierKey) && !entry.modifier().getKey().equals(legacyKey))
+        existing.modifiers().stream().filter(entry -> !GearModifierKeys.owns(entry.modifier().getKey(), type))
             .forEach(entry -> builder.addModifier(entry.attribute(), entry.modifier(), entry.getGroup(), entry.display()));
-        if (delta != 0.0D) builder.addModifier(attribute, new AttributeModifier(modifierKey, delta, AttributeModifier.Operation.ADD_NUMBER, AttributeSlotMatcher.targetGroup(context.item().getType().name())));
-        if (storedBaseline.isEmpty()) repository.baseline(context.item(), type, baseline);
+        if (delta != 0.0D) builder.addModifier(attribute, new AttributeModifier(modifierKey, delta, AttributeModifier.Operation.ADD_NUMBER, AttributeSlotMatcher.targetGroup(slot)));
+        if (storedBaseline.isEmpty()) { repository.baseline(context.item(), type, baseline); repository.baselineSlot(context.item(), type, slot.name()); }
         context.item().setData(DataComponentTypes.ATTRIBUTE_MODIFIERS, builder.build());
+    }
+    private static void removeOwned(final ItemAttributeModifiers existing, final org.bukkit.inventory.ItemStack item, final StatType type) {
+        final ItemAttributeModifiers.Builder builder = ItemAttributeModifiers.itemAttributes();
+        existing.modifiers().stream().filter(entry -> !GearModifierKeys.owns(entry.modifier().getKey(), type)).forEach(entry -> builder.addModifier(entry.attribute(), entry.modifier(), entry.getGroup(), entry.display()));
+        item.setData(DataComponentTypes.ATTRIBUTE_MODIFIERS, builder.build());
     }
 }

@@ -42,6 +42,8 @@ public final class GearItemRepository {
     }
     public Optional<Double> baseline(final ItemStack item, final StatType type) { return optional(item, baselineKey(type), PersistentDataType.DOUBLE); }
     public void baseline(final ItemStack item, final StatType type, final double value) { set(item, baselineKey(type), PersistentDataType.DOUBLE, value); }
+    public Optional<String> baselineSlot(final ItemStack item, final StatType type) { return optional(item, new NamespacedKey("gearmastery", "baseline-slot-" + type.name().toLowerCase(java.util.Locale.ROOT)), PersistentDataType.STRING); }
+    public void baselineSlot(final ItemStack item, final StatType type, final String slot) { set(item, new NamespacedKey("gearmastery", "baseline-slot-" + type.name().toLowerCase(java.util.Locale.ROOT)), PersistentDataType.STRING, slot); }
     public Optional<Integer> baselineMaxDamage(final ItemStack item) { return optional(item, baselineMaxDamage, PersistentDataType.INTEGER); }
     public void baselineMaxDamage(final ItemStack item, final int value) { set(item, baselineMaxDamage, PersistentDataType.INTEGER, value); }
     public Optional<Double> baselineAttackSpeedEffective(final ItemStack item) { return optional(item, baselineAttackSpeedEffective, PersistentDataType.DOUBLE); }
