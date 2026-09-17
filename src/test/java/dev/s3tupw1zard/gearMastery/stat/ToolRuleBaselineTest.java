@@ -30,4 +30,13 @@ class ToolRuleBaselineTest {
         final var duplicate = java.util.List.of(new ToolRuleBaseline.Snapshot("a", 8.0F, 10.0F), new ToolRuleBaseline.Snapshot("a", 12.0F, 10.0F));
         assertEquals(10.0F, ToolRuleBaseline.selectStructural(10.0F, duplicate));
     }
+    @Test void identicalExpectedDuplicateSnapshotsAreConsumedByOccurrence() {
+        final var prior = java.util.List.of(new ToolRuleBaseline.Snapshot("stone|true", 2.0F, 2.2F), new ToolRuleBaseline.Snapshot("stone|true", 2.0F, 2.2F), new ToolRuleBaseline.Snapshot("stone|true", 2.0F, 2.2F));
+        final var consumed = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<ToolRuleBaseline.Snapshot, Boolean>());
+        for (int occurrence = 0; occurrence < 3; occurrence++) {
+            final ToolRuleBaseline.Snapshot matched = MiningSpeedStatHandler.match("stone|true", 2.2F, prior, consumed);
+            assertEquals(2.0F, ToolRuleBaseline.select(2.2F, matched.baselineSpeed(), matched.expectedSpeed()));
+        }
+        assertEquals(3, consumed.size());
+    }
 }

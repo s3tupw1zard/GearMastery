@@ -3,6 +3,7 @@ package dev.s3tupw1zard.gearMastery.stat;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class RuntimeStatMathTest {
     @Test void deltaUsesStableBaselineInsteadOfPreviousAppliedValue() {
@@ -21,5 +22,9 @@ class RuntimeStatMathTest {
         assertEquals(750, DurabilityRescaler.rescaleDamage(1000, 500, 1500));
         assertEquals(1, DurabilityRescaler.rescaleDamage(3, 1, 2));
         assertEquals(0, DurabilityRescaler.rescaleDamage(1000, 0, 1500));
+    }
+    @Test void statRulesRejectNonFiniteConfigurationValues() {
+        assertThrows(IllegalArgumentException.class, () -> new StatRule(true, StatScaleMode.ADDITIVE, Double.NaN, 1.0D));
+        assertThrows(IllegalArgumentException.class, () -> new StatRule(true, StatScaleMode.ADDITIVE, 1.0D, Double.POSITIVE_INFINITY));
     }
 }

@@ -40,10 +40,11 @@ public final class MiningSpeedStatHandler implements StatHandler {
         return result;
     }
     static String serialize(final java.util.List<ToolRuleBaseline.Snapshot> snapshots) { return snapshots.stream().map(snapshot -> java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(snapshot.identity().getBytes(java.nio.charset.StandardCharsets.UTF_8)) + "|" + snapshot.baselineSpeed() + "|" + snapshot.expectedSpeed()).collect(java.util.stream.Collectors.joining(";")); }
-    private static ToolRuleBaseline.Snapshot match(final String identity, final Float visible, final java.util.List<ToolRuleBaseline.Snapshot> prior, final java.util.Set<ToolRuleBaseline.Snapshot> consumed) {
+    static ToolRuleBaseline.Snapshot match(final String identity, final Float visible, final java.util.List<ToolRuleBaseline.Snapshot> prior, final java.util.Set<ToolRuleBaseline.Snapshot> consumed) {
         final java.util.List<ToolRuleBaseline.Snapshot> exact = prior.stream().filter(snapshot -> !consumed.contains(snapshot) && snapshot.identity().equals(identity)).toList();
         final java.util.List<ToolRuleBaseline.Snapshot> expected = exact.stream().filter(snapshot -> java.util.Objects.equals(snapshot.expectedSpeed(), visible)).toList();
-        final ToolRuleBaseline.Snapshot match = expected.size() == 1 ? expected.getFirst() : exact.size() == 1 ? exact.getFirst() : null;
+        // Equal snapshots are occurrence-equivalent: consume the first original occurrence deterministically.
+        final ToolRuleBaseline.Snapshot match = !expected.isEmpty() ? expected.getFirst() : exact.size() == 1 ? exact.getFirst() : null;
         if (match != null) consumed.add(match);
         return match;
     }
