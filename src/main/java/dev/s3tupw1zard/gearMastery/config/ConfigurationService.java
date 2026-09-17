@@ -5,23 +5,27 @@ import dev.s3tupw1zard.gearMastery.stat.*;
 import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.*;
 import java.util.logging.Level;
 
 /** Loads configurations into an immutable snapshot. A failed reload keeps the prior snapshot. */
 public final class ConfigurationService {
-    private final JavaPlugin plugin;
+    private final File dataFolder;
+    private final java.util.logging.Logger logger;
     private volatile GearConfiguration current;
     private long generation;
-    public ConfigurationService(final JavaPlugin plugin) { this.plugin = plugin; }
+    public ConfigurationService(final JavaPlugin plugin) { this(plugin.getDataFolder(), plugin.getLogger()); }
+    ConfigurationService(final File dataFolder, final java.util.logging.Logger logger) { this.dataFolder = dataFolder; this.logger = logger; }
     public GearConfiguration current() { return Objects.requireNonNull(current, "Configuration not loaded"); }
     public boolean reload() {
-        try { current = load(++generation); return true; }
+        try { final GearConfiguration loaded = load(generation + 1); current = loaded; generation++; return true; }
         catch (final RuntimeException exception) {
-            plugin.getLogger().log(Level.SEVERE, "GearMastery configuration was not reloaded: " + exception.getMessage(), exception);
+            logger.log(Level.SEVERE, "GearMastery configuration was not reloaded: " + exception.getMessage(), exception);
             return false;
         }
     }
@@ -37,17 +41,46 @@ public final class ConfigurationService {
         final Map<String, RawProfile> rawProfiles = rawProfiles(items.getConfigurationSection("profiles"));
         final Map<String, ItemProfile> profiles = new LinkedHashMap<>();
         for (final String id : rawProfiles.keySet()) resolve(id, rawProfiles, profiles, new HashSet<>(), defaultCurve, globalRules);
+        validateProfileCurves(profiles, curves);
+        validateCurves(curves, maxLevel);
         final Map<Material, String> overrides = materialProfileMap(items.getConfigurationSection("material-overrides"));
         final Map<String, String> aliases = stringMap(items.getConfigurationSection("profile-aliases"));
         for (final String profileId : overrides.values()) if (!profiles.containsKey(profileId)) throw new IllegalArgumentException("Override references unknown profile: " + profileId);
         for (final String profileId : aliases.values()) if (!profiles.containsKey(profileId)) throw new IllegalArgumentException("Alias references unknown profile: " + profileId);
+        final Map<Material, String> materialProfiles = materialProfileIndex(profiles, overrides);
         final YamlConfiguration blocks = yaml("xp/blocks.yml");
         final Map<Material, Long> blockXp = materialLongMap(blocks.getConfigurationSection("blocks"));
         final YamlConfiguration main = yaml("config.yml");
-        return new GearConfiguration(nextGeneration, maxLevel, defaultCurve, curves, profiles, overrides, aliases, blockXp,
+        return new GearConfiguration(nextGeneration, maxLevel, defaultCurve, curves, profiles, overrides, materialProfiles, aliases, blockXp,
             main.getBoolean("safety.exclude-creative", true));
     }
-    private YamlConfiguration yaml(final String name) { return YamlConfiguration.loadConfiguration(new File(plugin.getDataFolder(), name)); }
+    private YamlConfiguration yaml(final String name) {
+        final YamlConfiguration configuration = new YamlConfiguration();
+        try { configuration.load(new File(dataFolder, name)); return configuration; }
+        catch (final IOException | InvalidConfigurationException exception) { throw new IllegalArgumentException("Could not load " + name, exception); }
+    }
+    private static void validateProfileCurves(final Map<String, ItemProfile> profiles, final Map<String, LevelingCurve> curves) {
+        for (final ItemProfile profile : profiles.values()) if (!curves.containsKey(profile.curveId())) throw new IllegalArgumentException("Profile " + profile.id() + " references unknown curve " + profile.curveId());
+    }
+    private static void validateCurves(final Map<String, LevelingCurve> curves, final int maxLevel) {
+        for (final Map.Entry<String, LevelingCurve> entry : curves.entrySet()) for (int level = 0; level < maxLevel; level++) {
+            try { if (entry.getValue().experienceForNextLevel(level) <= 0) throw new IllegalArgumentException("Curve " + entry.getKey() + " has non-positive XP at level " + level); }
+            catch (final ArithmeticException exception) { throw new IllegalArgumentException("Curve " + entry.getKey() + " overflows at level " + level, exception); }
+        }
+    }
+    static Map<Material, String> materialProfileIndex(final Map<String, ItemProfile> profiles, final Map<Material, String> overrides) {
+        final Map<Material, List<String>> owners = new HashMap<>();
+        for (final ItemProfile profile : profiles.values()) for (final Material material : profile.materials()) owners.computeIfAbsent(material, ignored -> new ArrayList<>()).add(profile.id());
+        final Map<Material, String> index = new HashMap<>();
+        for (final Map.Entry<Material, List<String>> entry : owners.entrySet()) {
+            final String override = overrides.get(entry.getKey());
+            if (override != null) index.put(entry.getKey(), override);
+            else if (entry.getValue().size() == 1) index.put(entry.getKey(), entry.getValue().getFirst());
+            else throw new IllegalArgumentException("Material " + entry.getKey() + " belongs to multiple profiles: " + String.join(", ", entry.getValue()));
+        }
+        for (final Map.Entry<Material, String> entry : overrides.entrySet()) index.put(entry.getKey(), entry.getValue());
+        return index;
+    }
     private Map<String, LevelingCurve> loadCurves(final ConfigurationSection section) {
         if (section == null) throw new IllegalArgumentException("Missing curves section");
         final Map<String, LevelingCurve> result = new HashMap<>();

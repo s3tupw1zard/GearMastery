@@ -2,7 +2,7 @@
 
 ## Data flow
 
-Gameplay listeners are intentionally thin. A listener builds a source-specific context and calls `ProgressionService`. The service resolves the item profile, fires `GearExperienceGainEvent`, persists XP through `GearItemRepository`, performs every required level-up, then emits one `GearLevelUpEvent` for each completed level.
+Gameplay listeners are intentionally thin. A listener builds a source-specific context and calls `ProgressionService`. The service resolves the item profile, fires `GearExperienceGainEvent`, then persists XP through `GearItemRepository`, performs every required level-up, and emits one `GearLevelUpEvent` for each completed level. A cancelled or non-positive gain does not initialize or otherwise modify an uninitialized item.
 
 The current vertical slice is `BlockBreakEvent` mining XP. It ignores cancelled events and, by default, Creative players. It awards XP only when the held item's profile enables `block_break` and the broken block is configured in `xp/blocks.yml`.
 
@@ -30,7 +30,7 @@ Native Paper item data components implement `ATTRIBUTE_MODIFIERS`, `MAX_DAMAGE`,
 
 ## Configuration and extension
 
-Configurations are parsed into immutable snapshots and atomically replaced only after validation succeeds. Profiles support one parent, material lists, source enablement, stat rules, overrides, and aliases. Resolution is material override, then matching profile, then no profile.
+Configurations are parsed into immutable snapshots and atomically replaced only after validation succeeds. YAML syntax failures, unknown fully resolved profile curves, non-positive or overflowing reachable curve transitions, and ambiguous inherited material ownership reject a reload while retaining the active snapshot. Profiles support one parent, material lists, source enablement, stat rules, overrides, and aliases. A material override intentionally selects an owner; otherwise each material must resolve to exactly one profile.
 
 To add an XP source, implement or register an `ExperienceSource`, listen to the relevant Paper event, build an `ExperienceContext`, and call `ProgressionService`. Do not put progression calculations in listeners. To add a stat, add a `StatType` and a focused `StatHandler`; gameplay effects belong in that handler rather than in profile parsing.
 

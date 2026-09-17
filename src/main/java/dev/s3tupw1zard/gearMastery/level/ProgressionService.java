@@ -21,18 +21,19 @@ public final class ProgressionService implements GearMasteryApi {
     @Override public Optional<GearItemData> data(final ItemStack item) { return repository.read(item); }
     @Override public Optional<GearItemData> initialize(final ItemStack item) {
         final Optional<GearItemData> existing = repository.read(item); if (existing.isPresent()) return existing;
-        return configurations.current().profileFor(item.getType()).map(profile -> { final GearItemData data = new GearItemData(GearItemRepository.CURRENT_SCHEMA, UUID.randomUUID(), profile.id(), 0, 0, 0); repository.write(item, data); stats.synchronizeIfNeeded(item, data); return data; });
+        return configurations.current().profileFor(item.getType()).map(profile -> { final GearItemData data = newItemData(profile); repository.write(item, data); stats.synchronizeIfNeeded(item, data); return data; });
     }
     @Override public Optional<GearItemData> addExperience(final Player player, final ItemStack item, final long amount, final String sourceId, final Object cause) {
         if (amount <= 0) return repository.read(item);
         final GearConfiguration configuration = configurations.current();
-        final Optional<GearItemData> initialized = initialize(item); if (initialized.isEmpty()) return Optional.empty();
-        final ItemProfile profile = configuration.findProfile(initialized.get().profileId()).orElse(null);
-        if (profile == null || (!sourceId.equals("admin") && !profile.supportsSource(sourceId))) return Optional.empty();
+        final Optional<ExperienceAdmission> admission = ExperienceAdmission.resolve(configuration, repository.read(item), item.getType(), sourceId);
+        if (admission.isEmpty()) return Optional.empty();
         final GearExperienceGainEvent gain = new GearExperienceGainEvent(new ExperienceContext(player, item, sourceId, cause), amount);
-        Bukkit.getPluginManager().callEvent(gain); if (gain.isCancelled() || gain.amount() == 0) return initialized;
-        GearItemData state = initialized.get(); long xp = safeAdd(state.experience(), gain.amount()); long lifetime = safeAdd(state.lifetimeExperience(), gain.amount());
-        final LevelingCurve curve = configuration.curveFor(profile);
+        Bukkit.getPluginManager().callEvent(gain); if (!ExperienceAdmission.shouldMutate(gain.isCancelled(), gain.amount())) return admission.get().existingData();
+        GearItemData state = admission.get().existingData().orElseGet(() -> newItemData(admission.get().profile()));
+        if (admission.get().existingData().isEmpty()) repository.write(item, state);
+        long xp = safeAdd(state.experience(), gain.amount()); long lifetime = safeAdd(state.lifetimeExperience(), gain.amount());
+        final LevelingCurve curve = configuration.curveFor(admission.get().profile());
         while (state.level() < configuration.maxLevel() && xp >= curve.experienceForNextLevel(state.level())) {
             xp -= curve.experienceForNextLevel(state.level()); final GearItemData before = state;
             state = new GearItemData(state.schemaVersion(), state.gearId(), state.profileId(), state.level() + 1, xp, lifetime);
@@ -50,5 +51,6 @@ public final class ProgressionService implements GearMasteryApi {
         }));
     }
     public void synchronize(final ItemStack item) { repository.read(item).ifPresent(data -> stats.synchronizeIfNeeded(item, data)); }
+    private static GearItemData newItemData(final ItemProfile profile) { return new GearItemData(GearItemRepository.CURRENT_SCHEMA, UUID.randomUUID(), profile.id(), 0, 0, 0); }
     private static long safeAdd(final long left, final long right) { return right > Long.MAX_VALUE - left ? Long.MAX_VALUE : left + right; }
 }
