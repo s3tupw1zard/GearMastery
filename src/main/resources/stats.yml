@@ -1,4 +1,5 @@
 # Global defaults merge before inherited and local profile rules.
+config-version: 2
 # ADDITIVE caps the resulting absolute value. MULTIPLICATIVE caps the multiplier factor.
 defaults:
   DURABILITY:

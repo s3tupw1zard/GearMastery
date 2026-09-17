@@ -1,4 +1,5 @@
 # A material override wins over a profile material list. Profile aliases preserve existing item data after renames.
+config-version: 2
 profile-aliases: {}
 material-overrides: {}
 

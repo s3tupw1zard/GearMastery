@@ -51,7 +51,8 @@ public final class ConfigurationService {
         final YamlConfiguration blocks = yaml("xp/blocks.yml");
         final Map<Material, Long> blockXp = materialLongMap(blocks.getConfigurationSection("blocks"));
         final YamlConfiguration main = yaml("config.yml");
-        return new GearConfiguration(nextGeneration, maxLevel, defaultCurve, curves, profiles, overrides, materialProfiles, aliases, blockXp,
+        final long statRevision = statRevision(profiles, materialProfiles, aliases);
+        return new GearConfiguration(nextGeneration, statRevision, maxLevel, defaultCurve, curves, profiles, overrides, materialProfiles, aliases, blockXp,
             main.getBoolean("safety.exclude-creative", true));
     }
     private YamlConfiguration yaml(final String name) {
@@ -80,6 +81,25 @@ public final class ConfigurationService {
         }
         for (final Map.Entry<Material, String> entry : overrides.entrySet()) index.put(entry.getKey(), entry.getValue());
         return index;
+    }
+    static long statRevision(final Map<String, ItemProfile> profiles, final Map<Material, String> materialProfiles, final Map<String, String> aliases) {
+        final StringBuilder canonical = new StringBuilder();
+        profiles.keySet().stream().sorted().forEach(id -> {
+            final ItemProfile profile = profiles.get(id); canonical.append("profile=").append(id).append('|').append(profile.curveId()).append('|');
+            profile.materials().stream().map(Material::name).sorted().forEach(material -> canonical.append(material).append(','));
+            canonical.append('|');
+            profile.statRules().entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {
+                final StatRule rule = entry.getValue(); canonical.append(entry.getKey()).append(':').append(rule.enabled()).append(':').append(rule.mode()).append(':')
+                    .append(Double.toString(rule.perLevel())).append(':').append(Double.toString(rule.cap())).append(';');
+            });
+            canonical.append('\n');
+        });
+        materialProfiles.entrySet().stream().sorted(Map.Entry.comparingByKey(java.util.Comparator.comparing(Material::name)))
+            .forEach(entry -> canonical.append("material=").append(entry.getKey().name()).append(':').append(entry.getValue()).append('\n'));
+        aliases.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> canonical.append("alias=").append(entry.getKey()).append(':').append(entry.getValue()).append('\n'));
+        long hash = 0xcbf29ce484222325L;
+        for (int i = 0; i < canonical.length(); i++) { hash ^= canonical.charAt(i); hash *= 0x100000001b3L; }
+        return hash;
     }
     private Map<String, LevelingCurve> loadCurves(final ConfigurationSection section) {
         if (section == null) throw new IllegalArgumentException("Missing curves section");

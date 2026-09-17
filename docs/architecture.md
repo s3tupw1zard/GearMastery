@@ -18,19 +18,21 @@ Item progress is durable while profile behavior is live-configured. `profile-ali
 
 `StatRule` supports additive scaling (an absolute result cap) and multiplicative scaling (a multiplier cap). `StatValueCalculator` and `StatDeltaCalculator` are pure: an item modifier is always `scaled baseline - baseline`, never a scale of a previously applied GearMastery value.
 
-`StatApplicationService` is called when an item is initialized, after the final state of an XP transaction, after a level set, and on selected lazy accesses. It dispatches to registered handlers and records an applied level, stat schema, and configuration generation in item PDC. A reload increments the generation; it does not scan player inventories or containers.
+`StatApplicationService` is called when an item is initialized, after the final state of an XP transaction, after a level set, and on selected lazy accesses. It dispatches to registered handlers and records an applied level, stat schema, and a deterministic semantic stat revision in item PDC. The revision is derived once from the resolved stat profiles, material ownership, and aliases, so it remains stable across restarts for an unchanged effective configuration. A handler failure deliberately leaves the item unmarked for a later retry.
 
 The first native application captures only the data GearMastery needs: numeric item-attribute baselines, max damage, and tool default/rule speeds. This avoids serializing complete item stacks. Existing non-GearMastery attribute entries are preserved. GearMastery removes and replaces only key-based modifiers in its own namespace, so repeated application is idempotent.
 
 Durability is implemented through `MAX_DAMAGE` and `DAMAGE`. When maximum damage changes, GearMastery preserves the item's relative remaining durability using nearest-integer rounding. Vanilla damage, Unbreaking, Mending, and repairs continue to update `DAMAGE` normally.
 
-Mining speed is implemented with `TOOL`. The handler rebuilds the component from its effective rules, retaining block registry sets, `correctForDrops`, `damagePerBlock`, and creative behavior, while scaling only captured non-null speeds and the default speed.
+Mining speed is implemented with `TOOL`. The handler rebuilds the component from its effective rules, retaining block registry sets, `correctForDrops`, `damagePerBlock`, and creative behavior, while scaling only captured non-null speeds and the default speed. Rule baselines are keyed by the rule's block set and drop-correctness semantics rather than list position; an externally changed visible speed is recaptured as that rule's new baseline.
 
-Native Paper item data components implement `ATTRIBUTE_MODIFIERS`, `MAX_DAMAGE`, and `TOOL`. Attack damage, attack speed, attack knockback, armor, armor toughness, and knockback resistance use key-based `ADD_NUMBER` modifiers with `MAINHAND` or the correct armor `EquipmentSlotGroup`. PDC remains the mechanism for GearMastery-owned state.
+Native Paper item data components implement `ATTRIBUTE_MODIFIERS`, `MAX_DAMAGE`, and `TOOL`. Attack damage, attack knockback, armor, armor toughness, and knockback resistance use key-based `ADD_NUMBER` modifiers with `MAINHAND` or the correct armor `EquipmentSlotGroup`. Attack speed uses its effective positive value (the vanilla player base plus item adjustments), so a negative vanilla sword adjustment is not accidentally made more negative. PDC remains the mechanism for GearMastery-owned state.
 
 ## Configuration and extension
 
 Configurations are parsed into immutable snapshots and atomically replaced only after validation succeeds. YAML syntax failures, unknown fully resolved profile curves, non-positive or overflowing reachable curve transitions, and ambiguous inherited material ownership reject a reload while retaining the active snapshot. Profiles support one parent, material lists, source enablement, stat rules, overrides, and aliases. A material override intentionally selects an owner; otherwise each material must resolve to exactly one profile.
+
+Bundled `items.yml` and `stats.yml` use `config-version: 2`. A V1 installation is migrated once before loading: missing defaults and profiles are added, known old leaf profiles receive their missing parent link, and existing administrator values win. Original files are saved as `.v1.bak` before replacement; a parse or migration failure prevents plugin startup rather than silently using partial data.
 
 To add an XP source, implement or register an `ExperienceSource`, listen to the relevant Paper event, build an `ExperienceContext`, and call `ProgressionService`. Do not put progression calculations in listeners. To add a stat, add a `StatType` and a focused `StatHandler`; gameplay effects belong in that handler rather than in profile parsing.
 

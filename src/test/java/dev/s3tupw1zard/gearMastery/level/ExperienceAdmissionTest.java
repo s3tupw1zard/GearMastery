@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ExperienceAdmissionTest {
     @Test void uninitializedItemsAreOnlyAdmittedBeforeTheGainEventAcceptsThem() {
         final ItemProfile profile = new ItemProfile("pickaxes", Set.of(Material.DIAMOND_PICKAXE), "standard", Set.of("block_break"), Map.of());
-        final GearConfiguration configuration = new GearConfiguration(1, 100, "standard", Map.of("standard", new LinearLevelingCurve(10, 0)),
+        final GearConfiguration configuration = new GearConfiguration(1, 123L, 100, "standard", Map.of("standard", new LinearLevelingCurve(10, 0)),
             Map.of("pickaxes", profile), Map.of(), Map.of(Material.DIAMOND_PICKAXE, "pickaxes"), Map.of(), Map.of(), true);
 
         assertTrue(ExperienceAdmission.resolve(configuration, java.util.Optional.empty(), Material.DIAMOND_PICKAXE, "block_break").isPresent());

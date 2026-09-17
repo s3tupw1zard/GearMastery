@@ -20,7 +20,7 @@ public final class ProgressionService implements GearMasteryApi {
     @Override public boolean isLevelable(final ItemStack item) { return configurations.current().profileFor(item.getType()).isPresent(); }
     @Override public Optional<GearItemData> data(final ItemStack item) { return repository.read(item); }
     @Override public Optional<GearItemData> initialize(final ItemStack item) {
-        final Optional<GearItemData> existing = repository.read(item); if (existing.isPresent()) return existing;
+        final Optional<GearItemData> existing = repository.read(item); if (existing.isPresent()) { stats.synchronizeIfNeeded(item, existing.get()); return existing; }
         return configurations.current().profileFor(item.getType()).map(profile -> { final GearItemData data = newItemData(profile); repository.write(item, data); stats.synchronizeIfNeeded(item, data); return data; });
     }
     @Override public Optional<GearItemData> addExperience(final Player player, final ItemStack item, final long amount, final String sourceId, final Object cause) {
