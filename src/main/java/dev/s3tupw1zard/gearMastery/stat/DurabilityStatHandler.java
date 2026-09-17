@@ -11,7 +11,7 @@ public final class DurabilityStatHandler implements StatHandler {
         if (currentMaximum == null || currentMaximum <= 0) return;
         final GearItemRepository repository = context.repository();
         final int baseline = repository.baselineMaxDamage(context.item()).orElseGet(() -> { repository.baselineMaxDamage(context.item(), currentMaximum); return currentMaximum; });
-        final int newMaximum = Math.max(1, (int) Math.round(StatValueCalculator.calculate(baseline, context.level(), context.rule())));
+        final int newMaximum = DurabilityValue.toMaxDamage(StatValueCalculator.calculate(baseline, context.level(), context.rule()));
         final int currentDamage = context.item().getDataOrDefault(DataComponentTypes.DAMAGE, 0);
         context.item().setData(DataComponentTypes.MAX_DAMAGE, newMaximum);
         context.item().setData(DataComponentTypes.DAMAGE, DurabilityRescaler.rescaleDamage(currentMaximum, currentDamage, newMaximum));

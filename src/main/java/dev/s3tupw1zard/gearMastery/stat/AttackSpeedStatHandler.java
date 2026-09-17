@@ -7,6 +7,7 @@ import org.bukkit.NamespacedKey;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeModifier;
 import org.bukkit.inventory.EquipmentSlotGroup;
+import org.bukkit.inventory.EquipmentSlot;
 
 /** Scales the effective positive player attack speed, not the signed item adjustment. */
 public final class AttackSpeedStatHandler implements StatHandler {
@@ -17,7 +18,7 @@ public final class AttackSpeedStatHandler implements StatHandler {
         final ItemAttributeModifiers existing = context.item().getData(DataComponentTypes.ATTRIBUTE_MODIFIERS); if (existing == null) return;
         final GearItemRepository repository = context.repository();
         final double effectiveBaseline = repository.baselineAttackSpeedEffective(context.item()).orElseGet(() -> {
-            final double captured = effectiveBaseline(existing, modifierKey); repository.baselineAttackSpeedEffective(context.item(), captured); return captured;
+            final double captured = effectiveBaseline(existing, modifierKey, EquipmentSlot.HAND); repository.baselineAttackSpeedEffective(context.item(), captured); return captured;
         });
         final ItemAttributeModifiers.Builder builder = ItemAttributeModifiers.itemAttributes();
         existing.modifiers().stream().filter(entry -> !entry.modifier().getKey().equals(modifierKey))
@@ -29,9 +30,10 @@ public final class AttackSpeedStatHandler implements StatHandler {
         }
         context.item().setData(DataComponentTypes.ATTRIBUTE_MODIFIERS, builder.build());
     }
-    static double effectiveBaseline(final ItemAttributeModifiers modifiers, final NamespacedKey ownKey) {
+    static double effectiveBaseline(final ItemAttributeModifiers modifiers, final NamespacedKey ownKey, final EquipmentSlot targetSlot) {
         return VANILLA_PLAYER_BASE_ATTACK_SPEED + modifiers.modifiers().stream().filter(entry -> entry.attribute().equals(Attribute.ATTACK_SPEED))
             .filter(entry -> !entry.modifier().getKey().equals(ownKey)).filter(entry -> entry.modifier().getOperation() == AttributeModifier.Operation.ADD_NUMBER)
+            .filter(entry -> AttributeSlotMatcher.appliesTo(entry.getGroup(), targetSlot))
             .mapToDouble(entry -> entry.modifier().getAmount()).sum();
     }
     static double effectiveBonus(final double effectiveBaseline, final int level, final StatRule rule) {

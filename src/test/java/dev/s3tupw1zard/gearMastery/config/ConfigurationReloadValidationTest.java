@@ -80,6 +80,10 @@ class ConfigurationReloadValidationTest {
         writeBase();
         write("leveling.yml", leveling(3, "QUADRATIC", Long.MAX_VALUE, 0));
         assertTrue(service().reload(), "high but representable values must remain valid");
+
+        writeBase();
+        write("leveling.yml", leveling(Integer.MAX_VALUE, "LINEAR", 1, 0));
+        assertTrue(service().reload(), "endpoint validation must support very large configured level bounds");
     }
 
     private ConfigurationService service() {

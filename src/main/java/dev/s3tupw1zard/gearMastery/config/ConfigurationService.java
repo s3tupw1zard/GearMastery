@@ -64,9 +64,10 @@ public final class ConfigurationService {
         for (final ItemProfile profile : profiles.values()) if (!curves.containsKey(profile.curveId())) throw new IllegalArgumentException("Profile " + profile.id() + " references unknown curve " + profile.curveId());
     }
     private static void validateCurves(final Map<String, LevelingCurve> curves, final int maxLevel) {
-        for (final Map.Entry<String, LevelingCurve> entry : curves.entrySet()) for (int level = 0; level < maxLevel; level++) {
-            try { if (entry.getValue().experienceForNextLevel(level) <= 0) throw new IllegalArgumentException("Curve " + entry.getKey() + " has non-positive XP at level " + level); }
-            catch (final ArithmeticException exception) { throw new IllegalArgumentException("Curve " + entry.getKey() + " overflows at level " + level, exception); }
+        final int lastReachableLevel = maxLevel - 1;
+        for (final Map.Entry<String, LevelingCurve> entry : curves.entrySet()) {
+            try { if (entry.getValue().experienceForNextLevel(lastReachableLevel) <= 0) throw new IllegalArgumentException("Curve " + entry.getKey() + " has non-positive XP at level " + lastReachableLevel); }
+            catch (final ArithmeticException exception) { throw new IllegalArgumentException("Curve " + entry.getKey() + " overflows at level " + lastReachableLevel, exception); }
         }
     }
     static Map<Material, String> materialProfileIndex(final Map<String, ItemProfile> profiles, final Map<Material, String> overrides) {

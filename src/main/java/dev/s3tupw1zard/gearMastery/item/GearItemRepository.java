@@ -14,14 +14,14 @@ import java.util.UUID;
 /** Owns the stable PDC schema for GearMastery item data. */
 public final class GearItemRepository {
     public static final int CURRENT_SCHEMA = 1;
-    private final NamespacedKey schema, id, profile, level, experience, lifetimeExperience, appliedLevel, appliedGeneration, appliedRevision, appliedSchema, baselineMaxDamage, baselineAttackSpeedEffective, baselineToolDefaultSpeed, baselineToolRuleCount;
+    private final NamespacedKey schema, id, profile, level, experience, lifetimeExperience, appliedLevel, appliedGeneration, appliedRevision, appliedSchema, baselineMaxDamage, baselineAttackSpeedEffective, baselineToolDefaultSpeed, baselineToolRuleCount, toolRuleSnapshots;
     public GearItemRepository(final Plugin plugin) {
         schema = new NamespacedKey(plugin, "schema"); id = new NamespacedKey(plugin, "gear-id");
         profile = new NamespacedKey(plugin, "profile"); level = new NamespacedKey(plugin, "level");
         experience = new NamespacedKey(plugin, "experience"); lifetimeExperience = new NamespacedKey(plugin, "lifetime-experience");
         appliedLevel = new NamespacedKey(plugin, "applied-level"); appliedGeneration = new NamespacedKey(plugin, "applied-generation"); appliedRevision = new NamespacedKey(plugin, "applied-stat-revision");
         appliedSchema = new NamespacedKey(plugin, "applied-stat-schema"); baselineMaxDamage = new NamespacedKey(plugin, "baseline-max-damage"); baselineAttackSpeedEffective = new NamespacedKey(plugin, "baseline-attack-speed-effective");
-        baselineToolDefaultSpeed = new NamespacedKey(plugin, "baseline-tool-default-speed"); baselineToolRuleCount = new NamespacedKey(plugin, "baseline-tool-rule-count");
+        baselineToolDefaultSpeed = new NamespacedKey(plugin, "baseline-tool-default-speed"); baselineToolRuleCount = new NamespacedKey(plugin, "baseline-tool-rule-count"); toolRuleSnapshots = new NamespacedKey(plugin, "tool-rule-snapshots");
     }
     public Optional<GearItemData> read(final ItemStack item) {
         final PersistentDataContainerView pdc = item.getPersistentDataContainer();
@@ -56,6 +56,8 @@ public final class GearItemRepository {
     public void expectedToolRuleSpeed(final ItemStack item, final String identity, final float value) { set(item, toolRuleKey("applied-tool-rule-", identity), PersistentDataType.FLOAT, value); }
     public Optional<Float> expectedToolDefaultSpeed(final ItemStack item) { return optional(item, new NamespacedKey("gearmastery", "applied-tool-default-speed"), PersistentDataType.FLOAT); }
     public void expectedToolDefaultSpeed(final ItemStack item, final float value) { set(item, new NamespacedKey("gearmastery", "applied-tool-default-speed"), PersistentDataType.FLOAT, value); }
+    public Optional<String> toolRuleSnapshots(final ItemStack item) { return optional(item, toolRuleSnapshots, PersistentDataType.STRING); }
+    public void toolRuleSnapshots(final ItemStack item, final String value) { set(item, toolRuleSnapshots, PersistentDataType.STRING, value); }
     public Optional<Float> baselineToolRuleSpeed(final ItemStack item, final int index) { return optional(item, new NamespacedKey("gearmastery", "baseline-tool-rule-" + index), PersistentDataType.FLOAT); }
     public void baselineToolRuleSpeed(final ItemStack item, final int index, final float value) { set(item, new NamespacedKey("gearmastery", "baseline-tool-rule-" + index), PersistentDataType.FLOAT, value); }
     public boolean isStatApplicationCurrent(final ItemStack item, final int currentLevel, final long revision, final int statSchema) {

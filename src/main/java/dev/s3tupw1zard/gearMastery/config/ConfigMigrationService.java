@@ -18,23 +18,24 @@ import java.util.logging.Logger;
 
 /** Migrates installed configuration schemas without replacing administrator values. */
 public final class ConfigMigrationService {
-    public static final int CURRENT_VERSION = 2;
+    public static final int CURRENT_VERSION = 3;
     private static final Map<String, String> PROFILE_PARENTS = Map.ofEntries(
-        Map.entry("swords", "melee_weapon"), Map.entry("axes", "combat_tool"), Map.entry("pickaxes", "mining_tool"),
-        Map.entry("shovels", "mining_tool"), Map.entry("hoes", "mining_tool"), Map.entry("tridents", "melee_weapon"),
-        Map.entry("helmets", "armor_piece"), Map.entry("chestplates", "armor_piece"), Map.entry("leggings", "armor_piece"), Map.entry("boots", "armor_piece"));
+        Map.entry("swords", "_gearmastery_melee_weapon"), Map.entry("axes", "_gearmastery_combat_tool"), Map.entry("pickaxes", "_gearmastery_mining_tool"),
+        Map.entry("shovels", "_gearmastery_mining_tool"), Map.entry("hoes", "_gearmastery_mining_tool"), Map.entry("tridents", "_gearmastery_melee_weapon"),
+        Map.entry("helmets", "_gearmastery_armor_piece"), Map.entry("chestplates", "_gearmastery_armor_piece"), Map.entry("leggings", "_gearmastery_armor_piece"), Map.entry("boots", "_gearmastery_armor_piece"));
     private final File dataFolder; private final ResourceReader resources; private final Logger logger;
     public ConfigMigrationService(final JavaPlugin plugin) { this(plugin.getDataFolder(), plugin::getResource, plugin.getLogger()); }
     ConfigMigrationService(final File dataFolder, final ResourceReader resources, final Logger logger) { this.dataFolder = dataFolder; this.resources = resources; this.logger = logger; }
     public boolean migrateInstalledConfigs() {
         try {
             final Map<String, YamlConfiguration> migrated = new LinkedHashMap<>();
+            final Map<String, Integer> sourceVersions = new LinkedHashMap<>();
             for (final String name : new String[] {"items.yml", "stats.yml"}) {
                 final File file = new File(dataFolder, name); if (!file.isFile()) continue;
-                final YamlConfiguration current = load(file); if (current.getInt("config-version", 1) >= CURRENT_VERSION) continue;
+                final YamlConfiguration current = load(file); final int version = current.getInt("config-version", 1); if (version >= CURRENT_VERSION) continue;
                 final YamlConfiguration defaults = loadDefault(name); mergeMissing(defaults, current);
-                if (name.equals("items.yml")) addMissingProfileParents(current);
-                current.set("config-version", CURRENT_VERSION); migrated.put(name, current);
+                if (name.equals("items.yml")) { if (version == 2) migrateSafeLegacyParentLinks(current); addMissingProfileParents(current); }
+                current.set("config-version", CURRENT_VERSION); migrated.put(name, current); sourceVersions.put(name, version);
             }
             if (migrated.isEmpty()) return true;
             final Map<String, Path> temporary = new LinkedHashMap<>();
@@ -43,7 +44,7 @@ public final class ConfigMigrationService {
                 entry.getValue().save(temp.toFile()); temporary.put(entry.getKey(), temp);
             }
             for (final String name : migrated.keySet()) {
-                final Path target = new File(dataFolder, name).toPath(); final Path backup = target.resolveSibling(name + ".v1.bak");
+                final Path target = new File(dataFolder, name).toPath(); final Path backup = target.resolveSibling(name + ".v" + sourceVersions.get(name) + ".bak");
                 if (!Files.exists(backup)) Files.copy(target, backup);
             }
             for (final Map.Entry<String, Path> entry : temporary.entrySet()) replace(entry.getValue(), new File(dataFolder, entry.getKey()).toPath());
@@ -55,6 +56,15 @@ public final class ConfigMigrationService {
     private static void addMissingProfileParents(final YamlConfiguration configuration) {
         final ConfigurationSection profiles = configuration.getConfigurationSection("profiles"); if (profiles == null) return;
         PROFILE_PARENTS.forEach((profile, parent) -> { final ConfigurationSection section = profiles.getConfigurationSection(profile); if (section != null && !section.contains("extends")) section.set("extends", parent); });
+    }
+    private static void migrateSafeLegacyParentLinks(final YamlConfiguration configuration) {
+        final ConfigurationSection profiles = configuration.getConfigurationSection("profiles"); if (profiles == null) return;
+        PROFILE_PARENTS.forEach((leaf, reserved) -> {
+            final ConfigurationSection child = profiles.getConfigurationSection(leaf); if (child == null) return;
+            final String legacy = child.getString("extends"); if (legacy == null || !Map.of("mining_tool", "_gearmastery_mining_tool", "melee_weapon", "_gearmastery_melee_weapon", "combat_tool", "_gearmastery_combat_tool", "armor_piece", "_gearmastery_armor_piece").containsKey(legacy)) return;
+            final ConfigurationSection parent = profiles.getConfigurationSection(legacy);
+            if (parent != null && parent.getStringList("items").isEmpty() && parent.getStringList("xp-sources").isEmpty()) child.set("extends", reserved);
+        });
     }
     private static void mergeMissing(final ConfigurationSection defaults, final ConfigurationSection target) {
         for (final String key : defaults.getKeys(false)) {

@@ -18,9 +18,11 @@ public final class NativeAttributeStatHandler implements StatHandler {
         final ItemAttributeModifiers existing = context.item().getData(DataComponentTypes.ATTRIBUTE_MODIFIERS);
         if (existing == null) return;
         final double baseline = repository.baseline(context.item(), type).orElseGet(() -> {
+            final var targetSlot = AttributeSlotMatcher.targetSlot(context.item().getType().name());
             final double captured = existing.modifiers().stream().filter(entry -> entry.attribute().equals(attribute))
                 .filter(entry -> !entry.modifier().getKey().equals(modifierKey))
                 .filter(entry -> entry.modifier().getOperation() == AttributeModifier.Operation.ADD_NUMBER)
+                .filter(entry -> AttributeSlotMatcher.appliesTo(entry.getGroup(), targetSlot))
                 .mapToDouble(entry -> entry.modifier().getAmount()).sum();
             repository.baseline(context.item(), type, captured); return captured;
         });
@@ -29,15 +31,8 @@ public final class NativeAttributeStatHandler implements StatHandler {
             .forEach(entry -> builder.addModifier(entry.attribute(), entry.modifier(), entry.getGroup(), entry.display()));
         if (context.rule().enabled()) {
             final double delta = StatDeltaCalculator.delta(baseline, context.level(), context.rule());
-            if (delta != 0.0D) builder.addModifier(attribute, new AttributeModifier(modifierKey, delta, AttributeModifier.Operation.ADD_NUMBER, slotGroup(context.item().getType().name())));
+            if (delta != 0.0D) builder.addModifier(attribute, new AttributeModifier(modifierKey, delta, AttributeModifier.Operation.ADD_NUMBER, AttributeSlotMatcher.targetGroup(context.item().getType().name())));
         }
         context.item().setData(DataComponentTypes.ATTRIBUTE_MODIFIERS, builder.build());
-    }
-    private static EquipmentSlotGroup slotGroup(final String materialName) {
-        if (materialName.endsWith("_HELMET")) return EquipmentSlotGroup.HEAD;
-        if (materialName.endsWith("_CHESTPLATE")) return EquipmentSlotGroup.CHEST;
-        if (materialName.endsWith("_LEGGINGS")) return EquipmentSlotGroup.LEGS;
-        if (materialName.endsWith("_BOOTS")) return EquipmentSlotGroup.FEET;
-        return EquipmentSlotGroup.MAINHAND;
     }
 }

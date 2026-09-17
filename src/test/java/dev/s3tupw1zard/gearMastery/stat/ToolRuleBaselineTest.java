@@ -17,4 +17,9 @@ class ToolRuleBaselineTest {
         assertEquals(13.0F, ToolRuleBaseline.select(13.0F, 8.0F, 10.0F));
         assertNull(ToolRuleBaseline.select(null, null, null));
     }
+    @Test void uniquePreviousAppliedSpeedSurvivesAStructuralChangeWithoutDoubleScaling() {
+        final var previous = java.util.List.of(new ToolRuleBaseline.Snapshot("stone", 8.0F, 10.0F));
+        assertEquals(8.0F, ToolRuleBaseline.selectStructural(10.0F, previous));
+        assertEquals(15.0F, ToolRuleBaseline.selectStructural(15.0F, previous));
+    }
 }
