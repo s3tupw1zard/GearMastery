@@ -1,0 +1,3 @@
+# Global safety controls. All text and comments are intentionally English for administrators.
+safety:
+  exclude-creative: true

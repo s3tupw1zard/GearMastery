@@ -1,5 +1,5 @@
 name: GearMastery
-description: $description
+description: Server-side item progression for Paper.
 prefix: GearMastery
 version: '${version}'
 
@@ -10,3 +10,23 @@ load: POSTWORLD
 
 authors: [ s3tupw1zard ]
 website: https://github.com/s3tupw1zard/GearMastery
+
+commands:
+  gearmastery:
+    description: Manage GearMastery items and configuration.
+    usage: /gearmastery <status|xp|level|reload>
+    aliases: [gm]
+
+permissions:
+  gearmastery.admin.status:
+    description: View GearMastery status for the held item.
+    default: op
+  gearmastery.admin.xp:
+    description: Add GearMastery XP to the held item.
+    default: op
+  gearmastery.admin.level:
+    description: Set the GearMastery level of the held item.
+    default: op
+  gearmastery.admin.reload:
+    description: Reload GearMastery configuration.
+    default: op

@@ -1,0 +1,50 @@
+# A material override wins over a profile material list. Profile aliases preserve existing item data after renames.
+profile-aliases: {}
+material-overrides: {}
+
+profiles:
+  swords:
+    items: [WOODEN_SWORD, STONE_SWORD, IRON_SWORD, GOLDEN_SWORD, DIAMOND_SWORD, NETHERITE_SWORD]
+    xp-sources: []
+  axes:
+    items: [WOODEN_AXE, STONE_AXE, IRON_AXE, GOLDEN_AXE, DIAMOND_AXE, NETHERITE_AXE]
+    xp-sources: []
+  pickaxes:
+    items: [WOODEN_PICKAXE, STONE_PICKAXE, IRON_PICKAXE, GOLDEN_PICKAXE, DIAMOND_PICKAXE, NETHERITE_PICKAXE]
+    xp-sources: [block_break]
+    stats:
+      DURABILITY:
+        enabled: true
+        mode: MULTIPLICATIVE
+        per-level: 0.01
+        cap: 2.0
+  shovels:
+    items: [WOODEN_SHOVEL, STONE_SHOVEL, IRON_SHOVEL, GOLDEN_SHOVEL, DIAMOND_SHOVEL, NETHERITE_SHOVEL]
+    xp-sources: []
+  hoes:
+    items: [WOODEN_HOE, STONE_HOE, IRON_HOE, GOLDEN_HOE, DIAMOND_HOE, NETHERITE_HOE]
+    xp-sources: []
+  fishing_rods:
+    items: [FISHING_ROD]
+    xp-sources: []
+  bows:
+    items: [BOW]
+    xp-sources: []
+  crossbows:
+    items: [CROSSBOW]
+    xp-sources: []
+  tridents:
+    items: [TRIDENT]
+    xp-sources: []
+  helmets:
+    items: [LEATHER_HELMET, CHAINMAIL_HELMET, IRON_HELMET, GOLDEN_HELMET, DIAMOND_HELMET, NETHERITE_HELMET, TURTLE_HELMET]
+    xp-sources: []
+  chestplates:
+    items: [LEATHER_CHESTPLATE, CHAINMAIL_CHESTPLATE, IRON_CHESTPLATE, GOLDEN_CHESTPLATE, DIAMOND_CHESTPLATE, NETHERITE_CHESTPLATE]
+    xp-sources: []
+  leggings:
+    items: [LEATHER_LEGGINGS, CHAINMAIL_LEGGINGS, IRON_LEGGINGS, GOLDEN_LEGGINGS, DIAMOND_LEGGINGS, NETHERITE_LEGGINGS]
+    xp-sources: []
+  boots:
+    items: [LEATHER_BOOTS, CHAINMAIL_BOOTS, IRON_BOOTS, GOLDEN_BOOTS, DIAMOND_BOOTS, NETHERITE_BOOTS]
+    xp-sources: []

@@ -1,0 +1,11 @@
+# Mining XP is intentionally limited to this foundation's single vertical slice.
+blocks:
+  STONE: 2
+  DEEPSLATE: 3
+  COAL_ORE: 8
+  DEEPSLATE_COAL_ORE: 10
+  IRON_ORE: 12
+  DEEPSLATE_IRON_ORE: 15
+  DIAMOND_ORE: 50
+  DEEPSLATE_DIAMOND_ORE: 65
+  NETHERRACK: 1

@@ -1,0 +1,2 @@
+# Stat rules currently provide validated, pure scaling only. Gameplay handlers are added by later feature branches.
+# ADDITIVE caps the resulting absolute value. MULTIPLICATIVE caps the multiplier factor.
