@@ -3,25 +3,51 @@ profile-aliases: {}
 material-overrides: {}
 
 profiles:
+  mining_tool:
+    items: []
+    xp-sources: []
+    stats:
+      MINING_SPEED: {enabled: true, mode: MULTIPLICATIVE, per-level: 0.003, cap: 1.30}
+  melee_weapon:
+    items: []
+    xp-sources: []
+    stats:
+      ATTACK_DAMAGE: {enabled: true, mode: MULTIPLICATIVE, per-level: 0.003, cap: 1.30}
+      ATTACK_SPEED: {enabled: false, mode: MULTIPLICATIVE, per-level: 0.001, cap: 1.10}
+      KNOCKBACK: {enabled: false, mode: ADDITIVE, per-level: 0.01, cap: 1.0}
+  combat_tool:
+    extends: mining_tool
+    items: []
+    xp-sources: []
+    stats:
+      ATTACK_DAMAGE: {enabled: true, mode: MULTIPLICATIVE, per-level: 0.003, cap: 1.30}
+      ATTACK_SPEED: {enabled: false, mode: MULTIPLICATIVE, per-level: 0.001, cap: 1.10}
+      KNOCKBACK: {enabled: false, mode: ADDITIVE, per-level: 0.01, cap: 1.0}
+  armor_piece:
+    items: []
+    xp-sources: []
+    stats:
+      ARMOR: {enabled: true, mode: MULTIPLICATIVE, per-level: 0.002, cap: 1.20}
+      ARMOR_TOUGHNESS: {enabled: true, mode: MULTIPLICATIVE, per-level: 0.002, cap: 1.20}
+      KNOCKBACK_RESISTANCE: {enabled: true, mode: MULTIPLICATIVE, per-level: 0.002, cap: 1.20}
   swords:
+    extends: melee_weapon
     items: [WOODEN_SWORD, STONE_SWORD, IRON_SWORD, GOLDEN_SWORD, DIAMOND_SWORD, NETHERITE_SWORD]
     xp-sources: []
   axes:
+    extends: combat_tool
     items: [WOODEN_AXE, STONE_AXE, IRON_AXE, GOLDEN_AXE, DIAMOND_AXE, NETHERITE_AXE]
     xp-sources: []
   pickaxes:
+    extends: mining_tool
     items: [WOODEN_PICKAXE, STONE_PICKAXE, IRON_PICKAXE, GOLDEN_PICKAXE, DIAMOND_PICKAXE, NETHERITE_PICKAXE]
     xp-sources: [block_break]
-    stats:
-      DURABILITY:
-        enabled: true
-        mode: MULTIPLICATIVE
-        per-level: 0.01
-        cap: 2.0
   shovels:
+    extends: mining_tool
     items: [WOODEN_SHOVEL, STONE_SHOVEL, IRON_SHOVEL, GOLDEN_SHOVEL, DIAMOND_SHOVEL, NETHERITE_SHOVEL]
     xp-sources: []
   hoes:
+    extends: mining_tool
     items: [WOODEN_HOE, STONE_HOE, IRON_HOE, GOLDEN_HOE, DIAMOND_HOE, NETHERITE_HOE]
     xp-sources: []
   fishing_rods:
@@ -34,17 +60,22 @@ profiles:
     items: [CROSSBOW]
     xp-sources: []
   tridents:
+    extends: melee_weapon
     items: [TRIDENT]
     xp-sources: []
   helmets:
+    extends: armor_piece
     items: [LEATHER_HELMET, CHAINMAIL_HELMET, IRON_HELMET, GOLDEN_HELMET, DIAMOND_HELMET, NETHERITE_HELMET, TURTLE_HELMET]
     xp-sources: []
   chestplates:
+    extends: armor_piece
     items: [LEATHER_CHESTPLATE, CHAINMAIL_CHESTPLATE, IRON_CHESTPLATE, GOLDEN_CHESTPLATE, DIAMOND_CHESTPLATE, NETHERITE_CHESTPLATE]
     xp-sources: []
   leggings:
+    extends: armor_piece
     items: [LEATHER_LEGGINGS, CHAINMAIL_LEGGINGS, IRON_LEGGINGS, GOLDEN_LEGGINGS, DIAMOND_LEGGINGS, NETHERITE_LEGGINGS]
     xp-sources: []
   boots:
+    extends: armor_piece
     items: [LEATHER_BOOTS, CHAINMAIL_BOOTS, IRON_BOOTS, GOLDEN_BOOTS, DIAMOND_BOOTS, NETHERITE_BOOTS]
     xp-sources: []

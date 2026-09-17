@@ -16,9 +16,17 @@ Item progress is durable while profile behavior is live-configured. `profile-ali
 
 `LevelingCurve` has linear, quadratic, and exponential implementations. It returns the XP needed for the transition from the current level to the next level. The configured maximum level is independent from each stat cap.
 
-`StatRule` supports additive scaling (an absolute result cap) and multiplicative scaling (a multiplier cap). `StatValueCalculator` is pure; `StatHandlerRegistry` is the extension point for handlers that later apply an evaluated value to Paper.
+`StatRule` supports additive scaling (an absolute result cap) and multiplicative scaling (a multiplier cap). `StatValueCalculator` and `StatDeltaCalculator` are pure: an item modifier is always `scaled baseline - baseline`, never a scale of a previously applied GearMastery value.
 
-Native Paper item data components are the planned mechanism for item-native features such as `ATTRIBUTE_MODIFIERS`, `MAX_DAMAGE`, `TOOL`, and enchantment components. PDC remains the mechanism for GearMastery-owned state.
+`StatApplicationService` is called when an item is initialized, after the final state of an XP transaction, after a level set, and on selected lazy accesses. It dispatches to registered handlers and records an applied level, stat schema, and configuration generation in item PDC. A reload increments the generation; it does not scan player inventories or containers.
+
+The first native application captures only the data GearMastery needs: numeric item-attribute baselines, max damage, and tool default/rule speeds. This avoids serializing complete item stacks. Existing non-GearMastery attribute entries are preserved. GearMastery removes and replaces only key-based modifiers in its own namespace, so repeated application is idempotent.
+
+Durability is implemented through `MAX_DAMAGE` and `DAMAGE`. When maximum damage changes, GearMastery preserves the item's relative remaining durability using nearest-integer rounding. Vanilla damage, Unbreaking, Mending, and repairs continue to update `DAMAGE` normally.
+
+Mining speed is implemented with `TOOL`. The handler rebuilds the component from its effective rules, retaining block registry sets, `correctForDrops`, `damagePerBlock`, and creative behavior, while scaling only captured non-null speeds and the default speed.
+
+Native Paper item data components implement `ATTRIBUTE_MODIFIERS`, `MAX_DAMAGE`, and `TOOL`. Attack damage, attack speed, attack knockback, armor, armor toughness, and knockback resistance use key-based `ADD_NUMBER` modifiers with `MAINHAND` or the correct armor `EquipmentSlotGroup`. PDC remains the mechanism for GearMastery-owned state.
 
 ## Configuration and extension
 
@@ -30,4 +38,4 @@ To add an XP source, implement or register an `ExperienceSource`, listen to the 
 
 This project targets Paper 26.2 and Java 25 only. It uses Paper APIs, not NMS, reflection, Mixins, client networking, or a datapack/JSON system. That deliberately differs from WeaponLeveling's mod-side NBT, Mixins, networking, and JSON definitions.
 
-Attack attributes, armor attributes, and max durability can later be represented natively through current Paper components. Mining speed, fishing timing/luck, projectile tuning, hidden enchantment effect multipliers, and durability prevention require focused runtime/event handlers. They are modeled but not applied by this foundation, so it does not claim unsupported server-native behavior.
+Projectile damage, fishing luck/speed, hidden enchantment effect multipliers, and durability prevention remain deferred. The current clone policy is unchanged: copied item stacks may carry the same GearMastery UUID until a dedicated anti-dupe branch defines a policy.

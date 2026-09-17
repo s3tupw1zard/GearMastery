@@ -1,6 +1,7 @@
 package dev.s3tupw1zard.gearMastery.item;
 
 import dev.s3tupw1zard.gearMastery.data.GearItemData;
+import dev.s3tupw1zard.gearMastery.stat.StatType;
 import io.papermc.paper.persistence.PersistentDataContainerView;
 import org.bukkit.NamespacedKey;
 import org.bukkit.inventory.ItemStack;
@@ -13,11 +14,14 @@ import java.util.UUID;
 /** Owns the stable PDC schema for GearMastery item data. */
 public final class GearItemRepository {
     public static final int CURRENT_SCHEMA = 1;
-    private final NamespacedKey schema, id, profile, level, experience, lifetimeExperience;
+    private final NamespacedKey schema, id, profile, level, experience, lifetimeExperience, appliedLevel, appliedGeneration, appliedSchema, baselineMaxDamage, baselineToolDefaultSpeed, baselineToolRuleCount;
     public GearItemRepository(final Plugin plugin) {
         schema = new NamespacedKey(plugin, "schema"); id = new NamespacedKey(plugin, "gear-id");
         profile = new NamespacedKey(plugin, "profile"); level = new NamespacedKey(plugin, "level");
         experience = new NamespacedKey(plugin, "experience"); lifetimeExperience = new NamespacedKey(plugin, "lifetime-experience");
+        appliedLevel = new NamespacedKey(plugin, "applied-level"); appliedGeneration = new NamespacedKey(plugin, "applied-generation");
+        appliedSchema = new NamespacedKey(plugin, "applied-stat-schema"); baselineMaxDamage = new NamespacedKey(plugin, "baseline-max-damage");
+        baselineToolDefaultSpeed = new NamespacedKey(plugin, "baseline-tool-default-speed"); baselineToolRuleCount = new NamespacedKey(plugin, "baseline-tool-rule-count");
     }
     public Optional<GearItemData> read(final ItemStack item) {
         final PersistentDataContainerView pdc = item.getPersistentDataContainer();
@@ -36,4 +40,24 @@ public final class GearItemRepository {
             pdc.set(experience, PersistentDataType.LONG, data.experience()); pdc.set(lifetimeExperience, PersistentDataType.LONG, data.lifetimeExperience());
         });
     }
+    public Optional<Double> baseline(final ItemStack item, final StatType type) { return optional(item, baselineKey(type), PersistentDataType.DOUBLE); }
+    public void baseline(final ItemStack item, final StatType type, final double value) { set(item, baselineKey(type), PersistentDataType.DOUBLE, value); }
+    public Optional<Integer> baselineMaxDamage(final ItemStack item) { return optional(item, baselineMaxDamage, PersistentDataType.INTEGER); }
+    public void baselineMaxDamage(final ItemStack item, final int value) { set(item, baselineMaxDamage, PersistentDataType.INTEGER, value); }
+    public Optional<Float> baselineToolDefaultSpeed(final ItemStack item) { return optional(item, baselineToolDefaultSpeed, PersistentDataType.FLOAT); }
+    public void baselineToolDefaultSpeed(final ItemStack item, final float value) { set(item, baselineToolDefaultSpeed, PersistentDataType.FLOAT, value); }
+    public Optional<Integer> baselineToolRuleCount(final ItemStack item) { return optional(item, baselineToolRuleCount, PersistentDataType.INTEGER); }
+    public void baselineToolRuleCount(final ItemStack item, final int value) { set(item, baselineToolRuleCount, PersistentDataType.INTEGER, value); }
+    public Optional<Float> baselineToolRuleSpeed(final ItemStack item, final int index) { return optional(item, new NamespacedKey("gearmastery", "baseline-tool-rule-" + index), PersistentDataType.FLOAT); }
+    public void baselineToolRuleSpeed(final ItemStack item, final int index, final float value) { set(item, new NamespacedKey("gearmastery", "baseline-tool-rule-" + index), PersistentDataType.FLOAT, value); }
+    public boolean isStatApplicationCurrent(final ItemStack item, final int currentLevel, final long generation, final int statSchema) {
+        final PersistentDataContainerView pdc = item.getPersistentDataContainer();
+        return pdc.getOrDefault(appliedLevel, PersistentDataType.INTEGER, -1) == currentLevel && pdc.getOrDefault(appliedGeneration, PersistentDataType.LONG, -1L) == generation && pdc.getOrDefault(appliedSchema, PersistentDataType.INTEGER, -1) == statSchema;
+    }
+    public void markStatApplication(final ItemStack item, final int currentLevel, final long generation, final int statSchema) {
+        item.editPersistentDataContainer(pdc -> { pdc.set(appliedLevel, PersistentDataType.INTEGER, currentLevel); pdc.set(appliedGeneration, PersistentDataType.LONG, generation); pdc.set(appliedSchema, PersistentDataType.INTEGER, statSchema); });
+    }
+    private NamespacedKey baselineKey(final StatType type) { return new NamespacedKey("gearmastery", "baseline-" + type.name().toLowerCase(java.util.Locale.ROOT)); }
+    private static <T, Z> Optional<Z> optional(final ItemStack item, final NamespacedKey key, final PersistentDataType<T, Z> type) { return Optional.ofNullable(item.getPersistentDataContainer().get(key, type)); }
+    private static <T, Z> void set(final ItemStack item, final NamespacedKey key, final PersistentDataType<T, Z> type, final Z value) { item.editPersistentDataContainer(pdc -> pdc.set(key, type, value)); }
 }

@@ -6,7 +6,7 @@ import org.bukkit.Material;
 import java.util.Map;
 import java.util.Optional;
 
-public record GearConfiguration(int maxLevel, String defaultCurveId, Map<String, LevelingCurve> curves,
+public record GearConfiguration(long generation, int maxLevel, String defaultCurveId, Map<String, LevelingCurve> curves,
                                 Map<String, ItemProfile> profiles, Map<Material, String> materialOverrides,
                                 Map<String, String> profileAliases, Map<Material, Long> blockExperience,
                                 boolean excludeCreative) {

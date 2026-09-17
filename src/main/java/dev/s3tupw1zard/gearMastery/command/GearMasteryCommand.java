@@ -30,6 +30,7 @@ public final class GearMasteryCommand implements CommandExecutor, TabCompleter {
     private boolean status(final CommandSender sender) {
         if (!sender.hasPermission("gearmastery.admin.status")) return denied(sender);
         final Optional<ItemStack> item = held(sender); if (item.isEmpty()) return true;
+        progression.synchronize(item.get());
         final Optional<GearItemData> data = progression.data(item.get());
         if (data.isEmpty()) { sender.sendMessage("This held item has no GearMastery progression."); return true; }
         final GearItemData value = data.get(); sender.sendMessage("Gear ID: " + value.gearId()); sender.sendMessage("Profile: " + value.profileId());

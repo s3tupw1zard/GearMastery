@@ -6,6 +6,7 @@ import dev.s3tupw1zard.gearMastery.config.ConfigurationService;
 import dev.s3tupw1zard.gearMastery.item.GearItemRepository;
 import dev.s3tupw1zard.gearMastery.level.ProgressionService;
 import dev.s3tupw1zard.gearMastery.listener.BlockBreakExperienceListener;
+import dev.s3tupw1zard.gearMastery.stat.*;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.Objects;
@@ -23,7 +24,16 @@ public final class GearMastery extends JavaPlugin {
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
-        final ProgressionService progression = new ProgressionService(configurations, new GearItemRepository(this));
+        final GearItemRepository repository = new GearItemRepository(this);
+        final StatHandlerRegistry handlers = new StatHandlerRegistry();
+        handlers.register(new DurabilityStatHandler()); handlers.register(new MiningSpeedStatHandler());
+        handlers.register(new NativeAttributeStatHandler(StatType.ATTACK_DAMAGE, org.bukkit.attribute.Attribute.ATTACK_DAMAGE));
+        handlers.register(new NativeAttributeStatHandler(StatType.ATTACK_SPEED, org.bukkit.attribute.Attribute.ATTACK_SPEED));
+        handlers.register(new NativeAttributeStatHandler(StatType.KNOCKBACK, org.bukkit.attribute.Attribute.ATTACK_KNOCKBACK));
+        handlers.register(new NativeAttributeStatHandler(StatType.ARMOR, org.bukkit.attribute.Attribute.ARMOR));
+        handlers.register(new NativeAttributeStatHandler(StatType.ARMOR_TOUGHNESS, org.bukkit.attribute.Attribute.ARMOR_TOUGHNESS));
+        handlers.register(new NativeAttributeStatHandler(StatType.KNOCKBACK_RESISTANCE, org.bukkit.attribute.Attribute.KNOCKBACK_RESISTANCE));
+        final ProgressionService progression = new ProgressionService(configurations, repository, new StatApplicationService(configurations, repository, handlers, getLogger()));
         getServer().getServicesManager().register(GearMasteryApi.class, progression, this, org.bukkit.plugin.ServicePriority.Normal);
         getServer().getPluginManager().registerEvents(new BlockBreakExperienceListener(configurations, progression), this);
         final GearMasteryCommand command = new GearMasteryCommand(progression, configurations);
