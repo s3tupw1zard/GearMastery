@@ -1,0 +1,12 @@
+name: GearMastery
+description: $description
+prefix: GearMastery
+version: '${version}'
+
+main: dev.s3tupw1zard.gearMastery.GearMastery
+paper-plugin-loader: dev.s3tupw1zard.gearMastery.GearMasteryLoader
+api-version: '26.2'
+load: POSTWORLD
+
+authors: [ s3tupw1zard ]
+website: https://github.com/s3tupw1zard/GearMastery
