@@ -13,6 +13,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
@@ -28,6 +29,11 @@ class ProgressionServiceTest {
     @Test void postEventInitializationIsUsedAsTheExperienceMutationBase() {
         final GearItemData listenerData = data(10);
         assertSame(listenerData, ProgressionService.mutationBase(Optional.of(listenerData), PROFILE));
+    }
+
+    @Test void synchronizeIgnoresEmptyInventorySlots() {
+        final ProgressionService service = new ProgressionService(null, null, null, event -> { });
+        assertDoesNotThrow(() -> service.synchronize(null));
     }
 
     private static GearItemData data(final int level) { return new GearItemData(1, UUID.randomUUID(), "pickaxes", level, 0, 0); }
