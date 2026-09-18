@@ -6,12 +6,13 @@ import org.bukkit.Material;
 import java.util.Map;
 import java.util.Optional;
 
-public record GearConfiguration(int maxLevel, String defaultCurveId, Map<String, LevelingCurve> curves,
+public record GearConfiguration(long generation, long statRevision, int maxLevel, String defaultCurveId, Map<String, LevelingCurve> curves,
                                 Map<String, ItemProfile> profiles, Map<Material, String> materialOverrides,
+                                Map<Material, String> materialProfiles,
                                 Map<String, String> profileAliases, Map<Material, Long> blockExperience,
                                 boolean excludeCreative) {
     public GearConfiguration {
-        curves = Map.copyOf(curves); profiles = Map.copyOf(profiles); materialOverrides = Map.copyOf(materialOverrides);
+        curves = Map.copyOf(curves); profiles = Map.copyOf(profiles); materialOverrides = Map.copyOf(materialOverrides); materialProfiles = Map.copyOf(materialProfiles);
         profileAliases = Map.copyOf(profileAliases); blockExperience = Map.copyOf(blockExperience);
     }
     public Optional<ItemProfile> findProfile(final String id) {
@@ -20,9 +21,7 @@ public record GearConfiguration(int maxLevel, String defaultCurveId, Map<String,
         return Optional.ofNullable(profiles.get(resolved));
     }
     public Optional<ItemProfile> profileFor(final Material material) {
-        final String override = materialOverrides.get(material);
-        if (override != null) return findProfile(override);
-        return profiles.values().stream().filter(profile -> profile.materials().contains(material)).findFirst();
+        return Optional.ofNullable(materialProfiles.get(material)).flatMap(this::findProfile);
     }
     public LevelingCurve curveFor(final ItemProfile profile) {
         final LevelingCurve curve = curves.get(profile.curveId());

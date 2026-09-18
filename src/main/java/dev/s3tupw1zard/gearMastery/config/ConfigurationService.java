@@ -5,46 +5,127 @@ import dev.s3tupw1zard.gearMastery.stat.*;
 import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.*;
 import java.util.logging.Level;
 
 /** Loads configurations into an immutable snapshot. A failed reload keeps the prior snapshot. */
 public final class ConfigurationService {
-    private final JavaPlugin plugin;
+    private final File dataFolder;
+    private final java.util.logging.Logger logger;
     private volatile GearConfiguration current;
-    public ConfigurationService(final JavaPlugin plugin) { this.plugin = plugin; }
+    private long generation;
+    public ConfigurationService(final JavaPlugin plugin) { this(plugin.getDataFolder(), plugin.getLogger()); }
+    ConfigurationService(final File dataFolder, final java.util.logging.Logger logger) { this.dataFolder = dataFolder; this.logger = logger; }
     public GearConfiguration current() { return Objects.requireNonNull(current, "Configuration not loaded"); }
     public boolean reload() {
-        try { current = load(); return true; }
+        try { final GearConfiguration loaded = load(generation + 1); current = loaded; generation++; return true; }
         catch (final RuntimeException exception) {
-            plugin.getLogger().log(Level.SEVERE, "GearMastery configuration was not reloaded: " + exception.getMessage(), exception);
+            logger.log(Level.SEVERE, "GearMastery configuration was not reloaded: " + exception.getMessage(), exception);
             return false;
         }
     }
-    private GearConfiguration load() {
+    private GearConfiguration load(final long nextGeneration) {
         final YamlConfiguration leveling = yaml("leveling.yml");
         final int maxLevel = Math.toIntExact(positive(leveling.getInt("leveling.max-level", 100), "leveling.max-level"));
         final String defaultCurve = requireString(leveling, "leveling.default-curve");
         final Map<String, LevelingCurve> curves = loadCurves(leveling.getConfigurationSection("curves"));
         if (!curves.containsKey(defaultCurve)) throw new IllegalArgumentException("Default curve does not exist: " + defaultCurve);
         final YamlConfiguration items = yaml("items.yml");
+        final YamlConfiguration stats = yaml("stats.yml");
+        requireCurrentSchema("items.yml", items);
+        requireCurrentSchema("stats.yml", stats);
+        final Map<StatType, StatRule> globalRules = parseRules(stats.getConfigurationSection("defaults"));
         final Map<String, RawProfile> rawProfiles = rawProfiles(items.getConfigurationSection("profiles"));
         final Map<String, ItemProfile> profiles = new LinkedHashMap<>();
-        for (final String id : rawProfiles.keySet()) resolve(id, rawProfiles, profiles, new HashSet<>(), defaultCurve);
+        for (final String id : rawProfiles.keySet()) resolve(id, rawProfiles, profiles, new HashSet<>(), defaultCurve, globalRules);
+        validateStatRules(profiles, maxLevel);
+        validateProfileCurves(profiles, curves);
+        validateCurves(curves, maxLevel);
         final Map<Material, String> overrides = materialProfileMap(items.getConfigurationSection("material-overrides"));
         final Map<String, String> aliases = stringMap(items.getConfigurationSection("profile-aliases"));
+        validateAliases(profiles, aliases);
         for (final String profileId : overrides.values()) if (!profiles.containsKey(profileId)) throw new IllegalArgumentException("Override references unknown profile: " + profileId);
         for (final String profileId : aliases.values()) if (!profiles.containsKey(profileId)) throw new IllegalArgumentException("Alias references unknown profile: " + profileId);
+        final Map<Material, String> materialProfiles = materialProfileIndex(profiles, overrides);
         final YamlConfiguration blocks = yaml("xp/blocks.yml");
         final Map<Material, Long> blockXp = materialLongMap(blocks.getConfigurationSection("blocks"));
         final YamlConfiguration main = yaml("config.yml");
-        return new GearConfiguration(maxLevel, defaultCurve, curves, profiles, overrides, aliases, blockXp,
+        final long statRevision = statRevision(profiles, materialProfiles, aliases);
+        return new GearConfiguration(nextGeneration, statRevision, maxLevel, defaultCurve, curves, profiles, overrides, materialProfiles, aliases, blockXp,
             main.getBoolean("safety.exclude-creative", true));
     }
-    private YamlConfiguration yaml(final String name) { return YamlConfiguration.loadConfiguration(new File(plugin.getDataFolder(), name)); }
+    private YamlConfiguration yaml(final String name) {
+        final YamlConfiguration configuration = new YamlConfiguration();
+        try { configuration.load(new File(dataFolder, name)); return configuration; }
+        catch (final IOException | InvalidConfigurationException exception) { throw new IllegalArgumentException("Could not load " + name, exception); }
+    }
+    private void requireCurrentSchema(final String name, final YamlConfiguration configuration) {
+        try { ConfigSchemaVersion.requireCurrent(name, new File(dataFolder, name), configuration); }
+        catch (final IOException exception) { throw new IllegalArgumentException("Could not load " + name, exception); }
+    }
+    private static void validateProfileCurves(final Map<String, ItemProfile> profiles, final Map<String, LevelingCurve> curves) {
+        for (final ItemProfile profile : profiles.values()) if (!curves.containsKey(profile.curveId())) throw new IllegalArgumentException("Profile " + profile.id() + " references unknown curve " + profile.curveId());
+    }
+    private static void validateStatRules(final Map<String, ItemProfile> profiles, final int maxLevel) {
+        for (final ItemProfile profile : profiles.values()) for (final Map.Entry<StatType, StatRule> entry : profile.statRules().entrySet()) {
+            final StatRule rule = entry.getValue();
+            if (!rule.enabled()) continue;
+            if ((entry.getKey() == StatType.MINING_SPEED || entry.getKey() == StatType.DURABILITY) && rule.perLevel() < 0.0D)
+                throw new IllegalArgumentException("Stat rule " + entry.getKey() + " in profile " + profile.id() + " must not produce a negative native value");
+            final double progression = rule.perLevel() * (double) maxLevel;
+            if (!Double.isFinite(progression)) throw new IllegalArgumentException("Stat rule " + entry.getKey() + " in profile " + profile.id() + " overflows before the configured maximum level");
+            if (rule.mode() == StatScaleMode.MULTIPLICATIVE && 1.0D + progression < 0.0D) throw new IllegalArgumentException("Stat rule " + entry.getKey() + " has a negative multiplier");
+            if (rule.mode() == StatScaleMode.MULTIPLICATIVE && !Double.isFinite(1.0D + progression)) throw new IllegalArgumentException("Stat rule " + entry.getKey() + " has a non-finite multiplier");
+        }
+    }
+    private static void validateCurves(final Map<String, LevelingCurve> curves, final int maxLevel) {
+        final int lastReachableLevel = maxLevel - 1;
+        for (final Map.Entry<String, LevelingCurve> entry : curves.entrySet()) {
+            try { if (entry.getValue().experienceForNextLevel(lastReachableLevel) <= 0) throw new IllegalArgumentException("Curve " + entry.getKey() + " has non-positive XP at level " + lastReachableLevel); }
+            catch (final ArithmeticException exception) { throw new IllegalArgumentException("Curve " + entry.getKey() + " overflows at level " + lastReachableLevel, exception); }
+        }
+    }
+    static Map<Material, String> materialProfileIndex(final Map<String, ItemProfile> profiles, final Map<Material, String> overrides) {
+        final Map<Material, List<String>> owners = new HashMap<>();
+        for (final ItemProfile profile : profiles.values()) for (final Material material : profile.materials()) owners.computeIfAbsent(material, ignored -> new ArrayList<>()).add(profile.id());
+        final Map<Material, String> index = new HashMap<>();
+        for (final Map.Entry<Material, List<String>> entry : owners.entrySet()) {
+            final String override = overrides.get(entry.getKey());
+            if (override != null) index.put(entry.getKey(), override);
+            else if (entry.getValue().size() == 1) index.put(entry.getKey(), entry.getValue().getFirst());
+            else throw new IllegalArgumentException("Material " + entry.getKey() + " belongs to multiple profiles: " + String.join(", ", entry.getValue()));
+        }
+        for (final Map.Entry<Material, String> entry : overrides.entrySet()) index.put(entry.getKey(), entry.getValue());
+        return index;
+    }
+    static void validateAliases(final Map<String, ItemProfile> profiles, final Map<String, String> aliases) {
+        for (final String legacyId : aliases.keySet()) if (profiles.containsKey(legacyId)) throw new IllegalArgumentException("Alias shadows active profile: " + legacyId);
+        for (final String profileId : aliases.values()) if (!profiles.containsKey(profileId)) throw new IllegalArgumentException("Alias references unknown profile: " + profileId);
+    }
+    static long statRevision(final Map<String, ItemProfile> profiles, final Map<Material, String> materialProfiles, final Map<String, String> aliases) {
+        final StringBuilder canonical = new StringBuilder();
+        profiles.keySet().stream().sorted().forEach(id -> {
+            final ItemProfile profile = profiles.get(id); canonical.append("profile=").append(id).append('|').append(profile.curveId()).append('|');
+            profile.materials().stream().map(Material::name).sorted().forEach(material -> canonical.append(material).append(','));
+            canonical.append('|');
+            profile.statRules().entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {
+                final StatRule rule = entry.getValue(); canonical.append(entry.getKey()).append(':').append(rule.enabled()).append(':').append(rule.mode()).append(':')
+                    .append(Double.toString(rule.perLevel())).append(':').append(Double.toString(rule.cap())).append(';');
+            });
+            canonical.append('\n');
+        });
+        materialProfiles.entrySet().stream().sorted(Map.Entry.comparingByKey(java.util.Comparator.comparing(Material::name)))
+            .forEach(entry -> canonical.append("material=").append(entry.getKey().name()).append(':').append(entry.getValue()).append('\n'));
+        aliases.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> canonical.append("alias=").append(entry.getKey()).append(':').append(entry.getValue()).append('\n'));
+        long hash = 0xcbf29ce484222325L;
+        for (int i = 0; i < canonical.length(); i++) { hash ^= canonical.charAt(i); hash *= 0x100000001b3L; }
+        return hash;
+    }
     private Map<String, LevelingCurve> loadCurves(final ConfigurationSection section) {
         if (section == null) throw new IllegalArgumentException("Missing curves section");
         final Map<String, LevelingCurve> result = new HashMap<>();
@@ -55,7 +136,11 @@ public final class ConfigurationService {
             result.put(id, switch (type) {
                 case "LINEAR" -> new LinearLevelingCurve(base, nonNegative(c.getLong("growth", 0), id + ".growth"));
                 case "QUADRATIC" -> new QuadraticLevelingCurve(base, nonNegative(c.getLong("growth", 0), id + ".growth"));
-                case "EXPONENTIAL" -> new ExponentialLevelingCurve(base, Math.max(1.0D, c.getDouble("growth", 1.0D)));
+                case "EXPONENTIAL" -> {
+                    final double growth = c.getDouble("growth", 1.0D);
+                    if (!Double.isFinite(growth) || growth < 1.0D) throw new IllegalArgumentException(id + ".growth must be finite and at least 1");
+                    yield new ExponentialLevelingCurve(base, growth);
+                }
                 default -> throw new IllegalArgumentException("Unknown curve type: " + type);
             });
         }
@@ -71,19 +156,29 @@ public final class ConfigurationService {
         }
         return result;
     }
-    private ItemProfile resolve(final String id, final Map<String, RawProfile> raw, final Map<String, ItemProfile> done, final Set<String> visiting, final String defaultCurve) {
+    private ItemProfile resolve(final String id, final Map<String, RawProfile> raw, final Map<String, ItemProfile> done, final Set<String> visiting, final String defaultCurve, final Map<StatType, StatRule> globalRules) {
         if (done.containsKey(id)) return done.get(id);
         if (!visiting.add(id)) throw new IllegalArgumentException("Profile inheritance cycle at " + id);
         final RawProfile value = Optional.ofNullable(raw.get(id)).orElseThrow(() -> new IllegalArgumentException("Unknown profile " + id));
-        final Set<Material> materials = new HashSet<>(); final Set<String> sources = new HashSet<>(); final Map<StatType, StatRule> rules = new EnumMap<>(StatType.class);
+        final Set<Material> materials = new HashSet<>(); final Set<String> sources = new HashSet<>(); final Map<StatType, StatRule> rules = new EnumMap<>(StatType.class); rules.putAll(globalRules);
         String curve = value.curve;
-        if (value.parent != null) { final ItemProfile parent = resolve(value.parent, raw, done, visiting, defaultCurve); materials.addAll(parent.materials()); sources.addAll(parent.experienceSources()); rules.putAll(parent.statRules()); if (value.curve == null) curve = parent.curveId(); }
+        if (value.parent != null) { final ItemProfile parent = resolve(value.parent, raw, done, visiting, defaultCurve, globalRules); materials.addAll(parent.materials()); sources.addAll(parent.experienceSources()); rules.putAll(parent.statRules()); if (value.curve == null) curve = parent.curveId(); }
         if (curve == null) curve = defaultCurve;
         materials.addAll(value.materials); sources.addAll(value.sources); rules.putAll(value.rules);
         final ItemProfile profile = new ItemProfile(id, materials, curve, sources, rules); done.put(id, profile); visiting.remove(id); return profile;
     }
     private Set<Material> parseMaterials(final List<String> names) { final Set<Material> result = new HashSet<>(); for (final String name : names) { final Material material = Material.matchMaterial(name); if (material == null || !material.isItem()) throw new IllegalArgumentException("Invalid item material: " + name); result.add(material); } return result; }
-    private Map<StatType, StatRule> parseRules(final ConfigurationSection section) { final Map<StatType, StatRule> result = new EnumMap<>(StatType.class); if (section == null) return result; for (final String key : section.getKeys(false)) { final ConfigurationSection s = Objects.requireNonNull(section.getConfigurationSection(key)); result.put(StatType.valueOf(key.toUpperCase(Locale.ROOT)), new StatRule(s.getBoolean("enabled", true), StatScaleMode.valueOf(requireString(s, "mode").toUpperCase(Locale.ROOT)), s.getDouble("per-level"), s.getDouble("cap"))); } return result; }
+    static Map<StatType, StatRule> parseRules(final ConfigurationSection section) {
+        final Map<StatType, StatRule> result = new EnumMap<>(StatType.class); if (section == null) return result;
+        for (final String key : section.getKeys(false)) {
+            final ConfigurationSection s = Objects.requireNonNull(section.getConfigurationSection(key));
+            final double perLevel = s.getDouble("per-level"); final double cap = s.getDouble("cap");
+            if (!Double.isFinite(perLevel) || !Double.isFinite(cap)) throw new IllegalArgumentException("Stat rule " + key + " must use finite per-level and cap values");
+            if (cap < 0.0D) throw new IllegalArgumentException("Stat rule " + key + " cap must not be negative");
+            result.put(StatType.valueOf(key.toUpperCase(Locale.ROOT)), new StatRule(s.getBoolean("enabled", true), StatScaleMode.valueOf(requireString(s, "mode").toUpperCase(Locale.ROOT)), perLevel, cap));
+        }
+        return result;
+    }
     private Map<Material, String> materialProfileMap(final ConfigurationSection section) { final Map<Material, String> result = new HashMap<>(); if (section == null) return result; for (final String key : section.getKeys(false)) { final Material material = Material.matchMaterial(key); if (material == null) throw new IllegalArgumentException("Invalid override material: " + key); result.put(material, requireString(section, key)); } return result; }
     private Map<String, String> stringMap(final ConfigurationSection section) { final Map<String, String> result = new HashMap<>(); if (section != null) for (final String key : section.getKeys(false)) result.put(key, requireString(section, key)); return result; }
     private Map<Material, Long> materialLongMap(final ConfigurationSection section) { final Map<Material, Long> result = new HashMap<>(); if (section == null) return result; for (final String key : section.getKeys(false)) { final Material material = Material.matchMaterial(key); if (material == null || !material.isBlock()) throw new IllegalArgumentException("Invalid block material: " + key); result.put(material, positive(section.getLong(key), "blocks." + key)); } return result; }

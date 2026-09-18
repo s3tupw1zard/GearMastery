@@ -2,7 +2,7 @@
 
 ## Data flow
 
-Gameplay listeners are intentionally thin. A listener builds a source-specific context and calls `ProgressionService`. The service resolves the item profile, fires `GearExperienceGainEvent`, persists XP through `GearItemRepository`, performs every required level-up, then emits one `GearLevelUpEvent` for each completed level.
+Gameplay listeners are intentionally thin. A listener builds a source-specific context and calls `ProgressionService`. The service resolves the item profile, fires `GearExperienceGainEvent`, then persists XP through `GearItemRepository`, performs every required level-up, and emits one `GearLevelUpEvent` for each completed level. A cancelled or non-positive gain does not initialize or otherwise modify an uninitialized item.
 
 The current vertical slice is `BlockBreakEvent` mining XP. It ignores cancelled events and, by default, Creative players. It awards XP only when the held item's profile enables `block_break` and the broken block is configured in `xp/blocks.yml`.
 
@@ -16,13 +16,23 @@ Item progress is durable while profile behavior is live-configured. `profile-ali
 
 `LevelingCurve` has linear, quadratic, and exponential implementations. It returns the XP needed for the transition from the current level to the next level. The configured maximum level is independent from each stat cap.
 
-`StatRule` supports additive scaling (an absolute result cap) and multiplicative scaling (a multiplier cap). `StatValueCalculator` is pure; `StatHandlerRegistry` is the extension point for handlers that later apply an evaluated value to Paper.
+`StatRule` supports additive scaling (an absolute result cap) and multiplicative scaling (a multiplier cap). `StatValueCalculator` and `StatDeltaCalculator` are pure: an item modifier is always `scaled baseline - baseline`, never a scale of a previously applied GearMastery value.
 
-Native Paper item data components are the planned mechanism for item-native features such as `ATTRIBUTE_MODIFIERS`, `MAX_DAMAGE`, `TOOL`, and enchantment components. PDC remains the mechanism for GearMastery-owned state.
+`StatApplicationService` is called when an item is initialized, after the final state of an XP transaction, after a level set, and on selected lazy accesses. It dispatches to registered handlers and records an applied level, stat schema, and a deterministic semantic stat revision in item PDC. The revision is derived once from the resolved stat profiles, material ownership, and aliases, so it remains stable across restarts for an unchanged effective configuration. A handler failure deliberately leaves the item unmarked for a later retry.
+
+The first native application captures only the data GearMastery needs: numeric item-attribute baselines, max damage, and tool default/rule speeds. This avoids serializing complete item stacks. Existing non-GearMastery attribute entries are preserved. GearMastery removes and replaces only key-based modifiers in its own namespace, so repeated application is idempotent.
+
+Durability is implemented through `MAX_DAMAGE` and `DAMAGE`. When maximum damage changes, GearMastery preserves the item's relative remaining durability using nearest-integer rounding. Vanilla damage, Unbreaking, Mending, and repairs continue to update `DAMAGE` normally.
+
+Mining speed is implemented with `TOOL`. The handler rebuilds the component from its effective rules, retaining block registry sets, `correctForDrops`, `damagePerBlock`, and creative behavior, while scaling only captured non-null speeds and the default speed. Rule baselines are keyed by the rule's block set and drop-correctness semantics rather than list position; an externally changed visible speed is recaptured as that rule's new baseline.
+
+Native Paper item data components implement `ATTRIBUTE_MODIFIERS`, `MAX_DAMAGE`, and `TOOL`. Attack damage, attack knockback, armor, armor toughness, and knockback resistance use key-based `ADD_NUMBER` modifiers with `MAINHAND` or the correct armor `EquipmentSlotGroup`. Attack speed uses its effective positive value (the vanilla player base plus item adjustments), so a negative vanilla sword adjustment is not accidentally made more negative. PDC remains the mechanism for GearMastery-owned state.
 
 ## Configuration and extension
 
-Configurations are parsed into immutable snapshots and atomically replaced only after validation succeeds. Profiles support one parent, material lists, source enablement, stat rules, overrides, and aliases. Resolution is material override, then matching profile, then no profile.
+Configurations are parsed into immutable snapshots and atomically replaced only after validation succeeds. YAML syntax failures, unknown fully resolved profile curves, non-positive or overflowing reachable curve transitions, and ambiguous inherited material ownership reject a reload while retaining the active snapshot. Profiles support one parent, material lists, source enablement, stat rules, overrides, and aliases. A material override intentionally selects an owner; otherwise each material must resolve to exactly one profile.
+
+Bundled `items.yml` and `stats.yml` use `config-version: 3`. Migration runs before normal configuration loading and is version-aware: V1-to-V3 preserves administrator-owned legacy configuration, including deliberately removed legacy profiles, while adding only V3 elements introduced after V1 (reserved internal profiles and the global durability default); V2-to-V3 adds missing reserved parents and performs only safe legacy-parent rewrites without restoring deliberately removed fields. Backups use the source version (`.v1.bak` or `.v2.bak`) before replacement. If replacing a staged file fails, every file attempted during that migration is restored from a per-attempt snapshot of its exact pre-migration contents; source-version backups remain persistent historical backups. Future schema versions are rejected rather than silently loaded; a parse or migration failure prevents partial startup, and V3 files are not migrated again.
 
 To add an XP source, implement or register an `ExperienceSource`, listen to the relevant Paper event, build an `ExperienceContext`, and call `ProgressionService`. Do not put progression calculations in listeners. To add a stat, add a `StatType` and a focused `StatHandler`; gameplay effects belong in that handler rather than in profile parsing.
 
@@ -30,4 +40,4 @@ To add an XP source, implement or register an `ExperienceSource`, listen to the 
 
 This project targets Paper 26.2 and Java 25 only. It uses Paper APIs, not NMS, reflection, Mixins, client networking, or a datapack/JSON system. That deliberately differs from WeaponLeveling's mod-side NBT, Mixins, networking, and JSON definitions.
 
-Attack attributes, armor attributes, and max durability can later be represented natively through current Paper components. Mining speed, fishing timing/luck, projectile tuning, hidden enchantment effect multipliers, and durability prevention require focused runtime/event handlers. They are modeled but not applied by this foundation, so it does not claim unsupported server-native behavior.
+Projectile damage, fishing luck/speed, hidden enchantment effect multipliers, and durability prevention remain deferred. The current clone policy is unchanged: copied item stacks may carry the same GearMastery UUID until a dedicated anti-dupe branch defines a policy.
