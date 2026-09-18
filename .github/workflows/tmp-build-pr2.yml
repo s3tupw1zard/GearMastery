@@ -1,0 +1,27 @@
+name: Temporary PR2 build
+
+on:
+  push:
+    branches:
+      - tmp/build-pr2-artifact
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Java 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+      - name: Build and test
+        run: mvn -B clean package
+      - name: Upload plugin jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: GearMastery-PR2
+          path: target/gearmastery-1.0-SNAPSHOT.jar
+          if-no-files-found: error
