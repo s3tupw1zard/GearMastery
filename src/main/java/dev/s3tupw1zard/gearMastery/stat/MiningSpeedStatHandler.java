@@ -21,7 +21,7 @@ public final class MiningSpeedStatHandler implements StatHandler {
             final String identity = identity(rule); final ToolRuleBaseline.Snapshot priorRule = exact.get(index);
             final ToolRuleBaseline.Snapshot structural = priorRule == null ? ToolRuleBaseline.structuralMatch(rule.speed(), prior.stream().filter(snapshot -> !consumed.contains(snapshot)).toList()) : null;
             if (structural != null) consumed.add(structural);
-            final Float baseline = priorRule != null ? ToolRuleBaseline.select(rule.speed(), priorRule.baselineSpeed(), priorRule.expectedSpeed()) : structural != null ? structural.baselineSpeed() : rule.speed();
+            final Float baseline = baseline(rule.speed(), priorRule, structural);
             final Float scaled = baseline == null ? null : ToolSpeedValue.requireValid(StatValueCalculator.calculate(baseline, context.level(), context.rule()), "rule " + identity);
             if (scaled != null) applied.add(new ToolRuleBaseline.Snapshot(identity, baseline, scaled));
             builder.addRule(Tool.rule(rule.blocks(), scaled, rule.correctForDrops()));
@@ -32,6 +32,11 @@ public final class MiningSpeedStatHandler implements StatHandler {
         repository.expectedToolDefaultSpeed(context.item(), scaledDefault);
         repository.toolRuleSnapshots(context.item(), serialize(applied));
         context.item().setData(DataComponentTypes.TOOL, rebuilt);
+    }
+    static Float baseline(final Float visible, final ToolRuleBaseline.Snapshot exact, final ToolRuleBaseline.Snapshot structural) {
+        if (exact != null) return ToolRuleBaseline.select(visible, exact.baselineSpeed(), exact.expectedSpeed());
+        if (structural != null) return Float.valueOf(structural.baselineSpeed());
+        return visible;
     }
     static String identity(final Tool.Rule rule) {
         final String blocks = rule.blocks().values().stream().map(key -> key.key().asString()).sorted().collect(java.util.stream.Collectors.joining(","));
