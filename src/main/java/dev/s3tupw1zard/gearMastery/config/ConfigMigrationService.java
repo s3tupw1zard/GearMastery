@@ -36,6 +36,7 @@ public final class ConfigMigrationService {
                 final YamlConfiguration defaults = loadDefault(name);
                 // V1 files are administrator-owned: do not recreate legacy leaves/values that were deliberately removed.
                 if (version == 1 && name.equals("items.yml")) { addReservedProfiles(defaults, current); addMissingProfileParents(current); }
+                if (version == 1 && name.equals("stats.yml")) migrateV1Stats(defaults, current);
                 if (version == 2 && name.equals("items.yml")) { addReservedProfiles(defaults, current); migrateSafeLegacyParentLinks(current); }
                 current.set("config-version", CURRENT_VERSION); migrated.put(name, current); sourceVersions.put(name, version);
             }
@@ -54,6 +55,14 @@ public final class ConfigMigrationService {
         } catch (final IOException | InvalidConfigurationException exception) {
             logger.log(java.util.logging.Level.SEVERE, "GearMastery configuration migration failed: " + exception.getMessage(), exception); return false;
         }
+    }
+    /** DURABILITY is the only global stat default introduced after the Foundation schema. */
+    private static void migrateV1Stats(final YamlConfiguration defaults, final YamlConfiguration current) {
+        if (current.contains("defaults.DURABILITY")) return;
+        final ConfigurationSection bundled = defaults.getConfigurationSection("defaults.DURABILITY");
+        if (bundled == null) return;
+        final ConfigurationSection target = current.getConfigurationSection("defaults") == null ? current.createSection("defaults") : current.getConfigurationSection("defaults");
+        mergeMissing(bundled, target.createSection("DURABILITY"));
     }
     private static void addReservedProfiles(final YamlConfiguration defaults, final YamlConfiguration current) {
         final ConfigurationSection source = defaults.getConfigurationSection("profiles"), target = current.getConfigurationSection("profiles"); if (source == null || target == null) return;
