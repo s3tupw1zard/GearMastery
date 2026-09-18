@@ -17,6 +17,10 @@ class ToolRuleBaselineTest {
         assertEquals(13.0F, ToolRuleBaseline.select(13.0F, 8.0F, 10.0F));
         assertNull(ToolRuleBaseline.select(null, null, null));
     }
+    @Test void nullableRuleSpeedRemainsNullableWithoutUnboxing() {
+        assertNull(MiningSpeedStatHandler.baseline(null, null, null));
+        assertEquals(8.0F, MiningSpeedStatHandler.baseline(null, null, new ToolRuleBaseline.Snapshot("stone", 8.0F, 10.0F)));
+    }
     @Test void uniquePreviousAppliedSpeedSurvivesAStructuralChangeWithoutDoubleScaling() {
         final var previous = java.util.List.of(new ToolRuleBaseline.Snapshot("stone", 8.0F, 10.0F));
         assertEquals(8.0F, ToolRuleBaseline.selectStructural(10.0F, previous));
