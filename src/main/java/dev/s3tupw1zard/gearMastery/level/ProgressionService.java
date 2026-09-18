@@ -60,7 +60,10 @@ public final class ProgressionService implements GearMasteryApi {
         final GearConfiguration configuration = configurations.current();
         return repository.read(item).flatMap(data -> configuration.findProfile(data.profileId()).flatMap(profile -> calculateStatValue(baseValue, data, type, profile, configuration)));
     }
-    public void synchronize(final ItemStack item) { repository.read(item).ifPresent(data -> stats.synchronizeIfNeeded(item, data)); }
+    public void synchronize(final ItemStack item) {
+        if (item == null) return;
+        repository.read(item).ifPresent(data -> stats.synchronizeIfNeeded(item, data));
+    }
     public void synchronizePlayer(final Player player) {
         for (final ItemStack item : player.getInventory().getContents()) synchronize(item);
         for (final ItemStack item : player.getInventory().getArmorContents()) synchronize(item);
