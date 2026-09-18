@@ -34,7 +34,8 @@ public final class ConfigMigrationService {
                 final File file = new File(dataFolder, name); if (!file.isFile()) continue;
                 final YamlConfiguration current = load(file); final int version = current.getInt("config-version", 1); if (version >= CURRENT_VERSION) continue;
                 final YamlConfiguration defaults = loadDefault(name);
-                if (version == 1) { mergeMissing(defaults, current); if (name.equals("items.yml")) addMissingProfileParents(current); }
+                // V1 files are administrator-owned: do not recreate legacy leaves/values that were deliberately removed.
+                if (version == 1 && name.equals("items.yml")) { addReservedProfiles(defaults, current); addMissingProfileParents(current); }
                 if (version == 2 && name.equals("items.yml")) { addReservedProfiles(defaults, current); migrateSafeLegacyParentLinks(current); }
                 current.set("config-version", CURRENT_VERSION); migrated.put(name, current); sourceVersions.put(name, version);
             }
