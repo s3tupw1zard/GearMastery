@@ -15,10 +15,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class StatApplicationServiceTest {
     private static final ItemProfile PROFILE = new ItemProfile("test", Set.of(), "standard", Set.of(), Map.of());
     @Test void clampsOnlyTheRuntimeStatLevelToTheConfiguredMaximum() {
-        assertEquals(50, StatApplicationService.effectiveStatLevel(100, 50));
-        assertEquals(80, StatApplicationService.effectiveStatLevel(100, 80));
-        assertEquals(100, StatApplicationService.effectiveStatLevel(100, 100));
-        assertEquals(20, StatApplicationService.effectiveStatLevel(20, 50));
+        assertEquals(50, EffectiveStatLevel.of(100, 50));
+        assertEquals(80, EffectiveStatLevel.of(100, 80));
+        assertEquals(100, EffectiveStatLevel.of(100, 100));
+        assertEquals(20, EffectiveStatLevel.of(20, 50));
     }
     @Test void aFailurePreventsCompletionAndTheNextAttemptCanSucceed() {
         final AtomicBoolean broken = new AtomicBoolean(true);

@@ -37,6 +37,8 @@ public final class ConfigurationService {
         if (!curves.containsKey(defaultCurve)) throw new IllegalArgumentException("Default curve does not exist: " + defaultCurve);
         final YamlConfiguration items = yaml("items.yml");
         final YamlConfiguration stats = yaml("stats.yml");
+        requireCurrentSchema("items.yml", items);
+        requireCurrentSchema("stats.yml", stats);
         final Map<StatType, StatRule> globalRules = parseRules(stats.getConfigurationSection("defaults"));
         final Map<String, RawProfile> rawProfiles = rawProfiles(items.getConfigurationSection("profiles"));
         final Map<String, ItemProfile> profiles = new LinkedHashMap<>();
@@ -60,6 +62,10 @@ public final class ConfigurationService {
         final YamlConfiguration configuration = new YamlConfiguration();
         try { configuration.load(new File(dataFolder, name)); return configuration; }
         catch (final IOException | InvalidConfigurationException exception) { throw new IllegalArgumentException("Could not load " + name, exception); }
+    }
+    private void requireCurrentSchema(final String name, final YamlConfiguration configuration) {
+        try { ConfigSchemaVersion.requireCurrent(name, new File(dataFolder, name), configuration); }
+        catch (final IOException exception) { throw new IllegalArgumentException("Could not load " + name, exception); }
     }
     private static void validateProfileCurves(final Map<String, ItemProfile> profiles, final Map<String, LevelingCurve> curves) {
         for (final ItemProfile profile : profiles.values()) if (!curves.containsKey(profile.curveId())) throw new IllegalArgumentException("Profile " + profile.id() + " references unknown curve " + profile.curveId());

@@ -30,6 +30,18 @@ class ConfigurationReloadValidationTest {
         assertSame(active, service.current());
     }
 
+    @Test void rejectsNonCurrentItemsSchemaVersionsAndKeepsTheActiveSnapshot() throws IOException {
+        assertRejectsSchemaVersions("items.yml", List.of(
+            "profiles:\n  pickaxes:\n    xp-sources: [block_break]\n",
+            "config-version: 2\nprofiles:\n  pickaxes:\n    xp-sources: [block_break]\n",
+            "config-version: 4\nprofiles:\n  pickaxes:\n    xp-sources: [block_break]\n",
+            "config-version: banana\nprofiles:\n  pickaxes:\n    xp-sources: [block_break]\n"));
+    }
+
+    @Test void rejectsNonCurrentStatsSchemaVersionsAndKeepsTheActiveSnapshot() throws IOException {
+        assertRejectsSchemaVersions("stats.yml", List.of("defaults: {}\n", "config-version: 2\ndefaults: {}\n", "config-version: 4\ndefaults: {}\n", "config-version: banana\ndefaults: {}\n"));
+    }
+
     @Test void indexesAUniqueMaterialOwnerDeterministically() {
         final ItemProfile profile = profile("tools", Set.of(Material.DIAMOND_PICKAXE));
         assertEquals("tools", ConfigurationService.materialProfileIndex(Map.of("tools", profile), Map.of()).get(Material.DIAMOND_PICKAXE));
@@ -102,7 +114,7 @@ class ConfigurationReloadValidationTest {
         write("config.yml", "safety:\n  exclude-creative: true\n");
         write("leveling.yml", leveling(3, "LINEAR", 10, 1));
         write("items.yml", items(""));
-        write("stats.yml", "defaults: {}\n");
+        write("stats.yml", "config-version: 3\ndefaults: {}\n");
         write("xp/blocks.yml", "blocks: {}\n");
     }
     private static String leveling(final int maxLevel, final String type, final long base, final long growth) {
@@ -119,10 +131,19 @@ class ConfigurationReloadValidationTest {
     }
     private static String items(final String profileExtra) {
         return """
+            config-version: 3
             profiles:
               pickaxes:
                 xp-sources: [block_break]
             %s""".formatted(profileExtra);
+    }
+    private void assertRejectsSchemaVersions(final String file, final List<String> invalidContents) throws IOException {
+        writeBase(); final ConfigurationService service = service(); assertTrue(service.reload()); final GearConfiguration active = service.current();
+        for (final String invalid : invalidContents) {
+            write(file, invalid);
+            assertFalse(service.reload(), file + " must reject a non-current schema");
+            assertSame(active, service.current(), file + " must preserve the active snapshot");
+        }
     }
     private static ItemProfile profile(final String id, final Set<Material> materials) {
         return new ItemProfile(id, materials, "standard", Set.of("block_break"), Map.of());

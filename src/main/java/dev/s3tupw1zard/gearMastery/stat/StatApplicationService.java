@@ -1,6 +1,7 @@
 package dev.s3tupw1zard.gearMastery.stat;
 
 import dev.s3tupw1zard.gearMastery.config.ConfigurationService;
+import dev.s3tupw1zard.gearMastery.config.GearConfiguration;
 import dev.s3tupw1zard.gearMastery.config.ItemProfile;
 import dev.s3tupw1zard.gearMastery.data.GearItemData;
 import dev.s3tupw1zard.gearMastery.item.GearItemRepository;
@@ -15,8 +16,10 @@ public final class StatApplicationService {
     private final ConfigurationService configurations; private final GearItemRepository repository; private final StatHandlerRegistry handlers; private final Logger logger;
     public StatApplicationService(final ConfigurationService configurations, final GearItemRepository repository, final StatHandlerRegistry handlers, final Logger logger) { this.configurations = configurations; this.repository = repository; this.handlers = handlers; this.logger = logger; }
     public void synchronizeIfNeeded(final ItemStack item, final GearItemData data) {
-        final var configuration = configurations.current();
-        final int effectiveLevel = effectiveStatLevel(data.level(), configuration.maxLevel());
+        synchronizeIfNeeded(item, data, configurations.current());
+    }
+    public void synchronizeIfNeeded(final ItemStack item, final GearItemData data, final GearConfiguration configuration) {
+        final int effectiveLevel = EffectiveStatLevel.of(data.level(), configuration.maxLevel());
         if (repository.isStatApplicationCurrent(item, effectiveLevel, configuration.statRevision(), STAT_SCHEMA)) return;
         // A retired profile keeps its progression data, but must not retain effects from its old configuration.
         final ItemProfile profile = configuration.findProfile(data.profileId()).orElseGet(StatApplicationService::disabledProfile);
@@ -25,7 +28,6 @@ public final class StatApplicationService {
             repository.markStatApplication(item, effectiveLevel, configuration.statRevision(), STAT_SCHEMA);
         }
     }
-    static int effectiveStatLevel(final int storedLevel, final int configuredMaximum) { return Math.min(storedLevel, configuredMaximum); }
     private static ItemProfile disabledProfile() { return new ItemProfile("_missing_profile", java.util.Set.of(), "", java.util.Set.of(), java.util.Map.of()); }
     static boolean applyHandlers(final Iterable<StatHandler> handlers, final ItemProfile profile, final ItemStack item, final int level,
                                  final GearItemRepository repository, final BiConsumer<StatHandler, RuntimeException> failures) {

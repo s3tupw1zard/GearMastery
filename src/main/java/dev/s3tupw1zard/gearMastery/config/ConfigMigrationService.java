@@ -17,12 +17,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Logger;
-import java.util.regex.Pattern;
 
 /** Migrates installed configuration schemas without replacing administrator values. */
 public final class ConfigMigrationService {
-    public static final int CURRENT_VERSION = 3;
-    private static final Pattern EXPLICIT_NULL_VERSION = Pattern.compile("(?m)^config-version\\s*:\\s*(?:(?:null|~)\\s*)?(?:#.*)?$");
+    public static final int CURRENT_VERSION = ConfigSchemaVersion.CURRENT_VERSION;
     private static final Map<String, String> PROFILE_PARENTS = Map.ofEntries(
         Map.entry("swords", "_gearmastery_melee_weapon"), Map.entry("axes", "_gearmastery_combat_tool"), Map.entry("pickaxes", "_gearmastery_mining_tool"),
         Map.entry("shovels", "_gearmastery_mining_tool"), Map.entry("hoes", "_gearmastery_mining_tool"), Map.entry("tridents", "_gearmastery_melee_weapon"),
@@ -84,17 +82,7 @@ public final class ConfigMigrationService {
             logger.log(java.util.logging.Level.SEVERE, "GearMastery configuration migration failed: " + exception.getMessage(), exception); return false;
         }
     }
-    private static int sourceVersion(final String name, final File file, final YamlConfiguration configuration) throws IOException {
-        if (!configuration.getKeys(false).contains("config-version")) {
-            if (EXPLICIT_NULL_VERSION.matcher(Files.readString(file.toPath())).find()) throw new IllegalArgumentException("Invalid config-version in " + name + ": expected an integer.");
-            return 1;
-        }
-        final Object value = configuration.get("config-version");
-        if (!(value instanceof Integer version)) throw new IllegalArgumentException("Invalid config-version in " + name + ": expected an integer.");
-        if (version < 1) throw new IllegalArgumentException("Invalid config-version " + version + " in " + name + ": supported versions start at 1.");
-        if (version > CURRENT_VERSION) throw new IllegalArgumentException("Unsupported future config version " + version + " in " + name + "; this plugin supports up to version " + CURRENT_VERSION + ".");
-        return version;
-    }
+    private static int sourceVersion(final String name, final File file, final YamlConfiguration configuration) throws IOException { return ConfigSchemaVersion.read(name, file, configuration); }
     /** DURABILITY is the only global stat default introduced after the Foundation schema. */
     private static void migrateV1Stats(final YamlConfiguration defaults, final YamlConfiguration current) {
         if (current.contains("defaults.DURABILITY")) return;
