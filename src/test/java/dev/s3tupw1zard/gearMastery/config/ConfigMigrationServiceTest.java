@@ -194,7 +194,42 @@ class ConfigMigrationServiceTest {
         assertFalse(service(replacer, logger).migrateInstalledConfigs());
         assertEquals(items, Files.readString(directory.resolve("items.yml"))); assertEquals(stats, Files.readString(directory.resolve("stats.yml")));
         assertEquals(items, Files.readString(directory.resolve("items.yml.v1.bak"))); assertEquals(stats, Files.readString(directory.resolve("stats.yml.v1.bak")));
-        try (var paths = Files.list(directory)) { assertFalse(paths.anyMatch(path -> path.getFileName().toString().endsWith(".migration"))); }
+        assertNoMigrationTemps();
+    }
+
+    @Test void rollsBackToTheCurrentAttemptSnapshotInsteadOfAnExistingHistoricalBackup() throws Exception {
+        final String oldOriginal = "profiles:\n  pickaxes:\n    items: [WOODEN_PICKAXE]\n    xp-sources: []\n";
+        final String editedItems = "profiles:\n  pickaxes:\n    items: [DIAMOND_PICKAXE]\n    xp-sources: [custom]\n";
+        final String stats = "defaults: {}\n"; write("items.yml", editedItems); write("stats.yml", stats); write("items.yml.v1.bak", oldOriginal);
+        final AtomicInteger replacements = new AtomicInteger();
+        final ConfigMigrationService.FileReplacer replacer = (source, target) -> {
+            if (replacements.incrementAndGet() == 2) throw new java.io.IOException("planned replacement failure");
+            Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
+        };
+        final Logger logger = Logger.getAnonymousLogger(); logger.setUseParentHandlers(false);
+        assertFalse(service(replacer, logger).migrateInstalledConfigs());
+        assertEquals(editedItems, Files.readString(directory.resolve("items.yml"))); assertEquals(stats, Files.readString(directory.resolve("stats.yml")));
+        assertEquals(oldOriginal, Files.readString(directory.resolve("items.yml.v1.bak"))); assertNoMigrationTemps();
+    }
+
+    @Test void restoresTheTargetWhoseReplaceMutatesThenFails() throws Exception {
+        final String items = "profiles:\n  pickaxes:\n    items: [DIAMOND_PICKAXE]\n    xp-sources: []\n";
+        final String stats = "defaults:\n  custom: value\n"; write("items.yml", items); write("stats.yml", stats);
+        final AtomicInteger replacements = new AtomicInteger();
+        final ConfigMigrationService.FileReplacer replacer = (source, target) -> {
+            final int attempt = replacements.incrementAndGet(); Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
+            if (attempt == 2) throw new java.io.IOException("planned replacement failure after target mutation");
+        };
+        final Logger logger = Logger.getAnonymousLogger(); logger.setUseParentHandlers(false);
+        assertFalse(service(replacer, logger).migrateInstalledConfigs());
+        assertEquals(items, Files.readString(directory.resolve("items.yml"))); assertEquals(stats, Files.readString(directory.resolve("stats.yml"))); assertNoMigrationTemps();
+    }
+
+    @Test void cleansStagingTempsWhenSnapshotPreparationFails() throws Exception {
+        write("items.yml", "profiles:\n  pickaxes:\n    items: [DIAMOND_PICKAXE]\n    xp-sources: []\n"); write("stats.yml", "defaults: {}\n");
+        final Logger logger = Logger.getAnonymousLogger(); logger.setUseParentHandlers(false);
+        assertFalse(service((source, target) -> Files.move(source, target, StandardCopyOption.REPLACE_EXISTING), (source, directory, name) -> { throw new java.io.IOException("planned snapshot failure"); }, logger).migrateInstalledConfigs());
+        assertNoMigrationTemps();
     }
 
     @Test void keepsSuccessfulMultiFileMigrationsUnchanged() throws Exception {
@@ -202,6 +237,7 @@ class ConfigMigrationServiceTest {
         assertTrue(service().migrateInstalledConfigs());
         assertEquals(3, load("items.yml").getInt("config-version")); assertEquals(3, load("stats.yml").getInt("config-version"));
         assertTrue(Files.exists(directory.resolve("items.yml.v1.bak"))); assertTrue(Files.exists(directory.resolve("stats.yml.v1.bak")));
+        assertNoMigrationTemps();
     }
 
     @Test void logsBothMigrationAndRollbackFailures() throws Exception {
@@ -233,6 +269,9 @@ class ConfigMigrationServiceTest {
     private ConfigMigrationService service(final ConfigMigrationService.FileReplacer replacer, final Logger logger) {
         return new ConfigMigrationService(directory.toFile(), name -> new ByteArrayInputStream(defaults().get(name).getBytes(StandardCharsets.UTF_8)), logger, replacer);
     }
+    private ConfigMigrationService service(final ConfigMigrationService.FileReplacer replacer, final ConfigMigrationService.RollbackSnapshotter snapshotter, final Logger logger) {
+        return new ConfigMigrationService(directory.toFile(), name -> new ByteArrayInputStream(defaults().get(name).getBytes(StandardCharsets.UTF_8)), logger, replacer, snapshotter);
+    }
     private static Map<String, String> defaults() {
         return Map.of("items.yml", """
             config-version: 3
@@ -261,6 +300,9 @@ class ConfigMigrationServiceTest {
                 per-level: 0.005
                 cap: 1.5
             """);
+    }
+    private void assertNoMigrationTemps() throws Exception {
+        try (var paths = Files.list(directory)) { assertFalse(paths.anyMatch(path -> { final String name = path.getFileName().toString(); return name.endsWith(".migration") || name.endsWith(".rollback"); })); }
     }
     private void write(final String name, final String content) throws Exception { Files.writeString(directory.resolve(name), content); }
     private YamlConfiguration load(final String name) throws Exception { final YamlConfiguration yaml = new YamlConfiguration(); yaml.load(directory.resolve(name).toFile()); return yaml; }

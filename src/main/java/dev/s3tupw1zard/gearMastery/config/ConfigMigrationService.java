@@ -27,10 +27,11 @@ public final class ConfigMigrationService {
         Map.entry("swords", "_gearmastery_melee_weapon"), Map.entry("axes", "_gearmastery_combat_tool"), Map.entry("pickaxes", "_gearmastery_mining_tool"),
         Map.entry("shovels", "_gearmastery_mining_tool"), Map.entry("hoes", "_gearmastery_mining_tool"), Map.entry("tridents", "_gearmastery_melee_weapon"),
         Map.entry("helmets", "_gearmastery_armor_piece"), Map.entry("chestplates", "_gearmastery_armor_piece"), Map.entry("leggings", "_gearmastery_armor_piece"), Map.entry("boots", "_gearmastery_armor_piece"));
-    private final File dataFolder; private final ResourceReader resources; private final Logger logger; private final FileReplacer replacer;
+    private final File dataFolder; private final ResourceReader resources; private final Logger logger; private final FileReplacer replacer; private final RollbackSnapshotter snapshotter;
     public ConfigMigrationService(final JavaPlugin plugin) { this(plugin.getDataFolder(), plugin::getResource, plugin.getLogger()); }
-    ConfigMigrationService(final File dataFolder, final ResourceReader resources, final Logger logger) { this(dataFolder, resources, logger, ConfigMigrationService::replaceAtomically); }
-    ConfigMigrationService(final File dataFolder, final ResourceReader resources, final Logger logger, final FileReplacer replacer) { this.dataFolder = dataFolder; this.resources = resources; this.logger = logger; this.replacer = replacer; }
+    ConfigMigrationService(final File dataFolder, final ResourceReader resources, final Logger logger) { this(dataFolder, resources, logger, ConfigMigrationService::replaceAtomically, ConfigMigrationService::createSnapshot); }
+    ConfigMigrationService(final File dataFolder, final ResourceReader resources, final Logger logger, final FileReplacer replacer) { this(dataFolder, resources, logger, replacer, ConfigMigrationService::createSnapshot); }
+    ConfigMigrationService(final File dataFolder, final ResourceReader resources, final Logger logger, final FileReplacer replacer, final RollbackSnapshotter snapshotter) { this.dataFolder = dataFolder; this.resources = resources; this.logger = logger; this.replacer = replacer; this.snapshotter = snapshotter; }
     public boolean migrateInstalledConfigs() {
         try {
             final Map<String, YamlConfiguration> installed = new LinkedHashMap<>();
@@ -53,25 +54,32 @@ public final class ConfigMigrationService {
             }
             if (migrated.isEmpty()) return true;
             final Map<String, Path> temporary = new LinkedHashMap<>();
-            for (final Map.Entry<String, YamlConfiguration> entry : migrated.entrySet()) {
-                final Path target = new File(dataFolder, entry.getKey()).toPath(); final Path temp = Files.createTempFile(target.getParent(), entry.getKey(), ".migration");
-                entry.getValue().save(temp.toFile()); temporary.put(entry.getKey(), temp);
-            }
-            for (final String name : migrated.keySet()) {
-                final Path target = new File(dataFolder, name).toPath(); final Path backup = target.resolveSibling(name + ".v" + sourceVersions.get(name) + ".bak");
-                if (!Files.exists(backup)) Files.copy(target, backup);
-            }
-            final List<String> replaced = new ArrayList<>();
+            final Map<String, Path> snapshots = new LinkedHashMap<>(); final List<Path> rollbackTemporary = new ArrayList<>();
             try {
-                for (final Map.Entry<String, Path> entry : temporary.entrySet()) {
-                    replacer.replace(entry.getValue(), new File(dataFolder, entry.getKey()).toPath()); replaced.add(entry.getKey());
+                for (final Map.Entry<String, YamlConfiguration> entry : migrated.entrySet()) {
+                    final Path target = new File(dataFolder, entry.getKey()).toPath(); final Path temp = Files.createTempFile(target.getParent(), entry.getKey(), ".migration");
+                    temporary.put(entry.getKey(), temp); entry.getValue().save(temp.toFile());
                 }
-            } catch (final IOException replaceFailure) {
-                rollbackReplacedFiles(replaced, sourceVersions, replaceFailure); throw replaceFailure;
+                for (final String name : migrated.keySet()) {
+                    final Path target = new File(dataFolder, name).toPath(); final Path backup = target.resolveSibling(name + ".v" + sourceVersions.get(name) + ".bak");
+                    if (!Files.exists(backup)) Files.copy(target, backup);
+                }
+                for (final String name : migrated.keySet()) {
+                    final Path target = new File(dataFolder, name).toPath();
+                    snapshots.put(name, snapshotter.snapshot(target, target.getParent(), name));
+                }
+                final List<String> attempted = new ArrayList<>();
+                try {
+                for (final Map.Entry<String, Path> entry : temporary.entrySet()) {
+                        attempted.add(entry.getKey()); replacer.replace(entry.getValue(), new File(dataFolder, entry.getKey()).toPath());
+                    }
+                } catch (final IOException replaceFailure) {
+                    rollbackAttemptedFiles(attempted, snapshots, rollbackTemporary, replaceFailure); throw replaceFailure;
+                }
+                logger.info("Migrated GearMastery configuration schema to version " + CURRENT_VERSION + "."); return true;
             } finally {
-                cleanupTemporaryFiles(temporary.values());
+                cleanupTemporaryFiles(temporary.values()); cleanupTemporaryFiles(snapshots.values()); cleanupTemporaryFiles(rollbackTemporary);
             }
-            logger.info("Migrated GearMastery configuration schema to version " + CURRENT_VERSION + "."); return true;
         } catch (final IOException | InvalidConfigurationException | IllegalArgumentException exception) {
             logger.log(java.util.logging.Level.SEVERE, "GearMastery configuration migration failed: " + exception.getMessage(), exception); return false;
         }
@@ -159,28 +167,28 @@ public final class ConfigMigrationService {
             else if (!target.contains(key)) target.set(key, value);
         }
     }
-    private void rollbackReplacedFiles(final List<String> replaced, final Map<String, Integer> sourceVersions, final IOException replaceFailure) {
-        for (int index = replaced.size() - 1; index >= 0; index--) {
-            final String name = replaced.get(index); final Path target = new File(dataFolder, name).toPath();
-            final Path backup = target.resolveSibling(name + ".v" + sourceVersions.get(name) + ".bak");
+    private void rollbackAttemptedFiles(final List<String> attempted, final Map<String, Path> snapshots, final List<Path> rollbackTemporary, final IOException replaceFailure) {
+        for (int index = attempted.size() - 1; index >= 0; index--) {
+            final String name = attempted.get(index); final Path target = new File(dataFolder, name).toPath(); final Path snapshot = snapshots.get(name);
             try {
-                final Path rollback = Files.createTempFile(target.getParent(), name, ".migration");
-                try { Files.copy(backup, rollback, StandardCopyOption.REPLACE_EXISTING); replacer.replace(rollback, target); }
-                finally {
-                    try { Files.deleteIfExists(rollback); }
-                    catch (final IOException cleanupFailure) { logger.log(java.util.logging.Level.WARNING, "GearMastery configuration migration rollback cleanup failed for " + name + ": " + cleanupFailure.getMessage(), cleanupFailure); }
-                }
+                final Path rollback = Files.createTempFile(target.getParent(), name, ".migration"); rollbackTemporary.add(rollback);
+                Files.copy(snapshot, rollback, StandardCopyOption.REPLACE_EXISTING); replacer.replace(rollback, target);
             } catch (final IOException rollbackFailure) {
                 replaceFailure.addSuppressed(rollbackFailure);
                 logger.log(java.util.logging.Level.SEVERE, "GearMastery configuration migration rollback failed for " + name + ": " + rollbackFailure.getMessage(), rollbackFailure);
             }
         }
     }
-    private static void cleanupTemporaryFiles(final Iterable<Path> temporary) {
+    private void cleanupTemporaryFiles(final Iterable<Path> temporary) {
         for (final Path path : temporary) {
             try { Files.deleteIfExists(path); }
-            catch (final IOException ignored) { }
+            catch (final IOException cleanupFailure) { logger.log(java.util.logging.Level.WARNING, "GearMastery configuration migration temporary cleanup failed for " + path.getFileName() + ": " + cleanupFailure.getMessage(), cleanupFailure); }
         }
+    }
+    private static Path createSnapshot(final Path source, final Path directory, final String name) throws IOException {
+        final Path snapshot = Files.createTempFile(directory, name, ".rollback");
+        try { Files.copy(source, snapshot, StandardCopyOption.REPLACE_EXISTING); return snapshot; }
+        catch (final IOException failure) { try { Files.deleteIfExists(snapshot); } catch (final IOException cleanupFailure) { failure.addSuppressed(cleanupFailure); } throw failure; }
     }
     private static void replaceAtomically(final Path source, final Path target) throws IOException {
         try { Files.move(source, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE); }
@@ -192,4 +200,5 @@ public final class ConfigMigrationService {
     private static YamlConfiguration load(final File file) throws IOException, InvalidConfigurationException { final YamlConfiguration yaml = new YamlConfiguration(); yaml.load(file); return yaml; }
     @FunctionalInterface interface ResourceReader { InputStream open(String name); }
     @FunctionalInterface interface FileReplacer { void replace(Path source, Path target) throws IOException; }
+    @FunctionalInterface interface RollbackSnapshotter { Path snapshot(Path source, Path directory, String name) throws IOException; }
 }
