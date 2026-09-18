@@ -42,6 +42,13 @@ public final class ProgressionService implements GearMasteryApi {
             xp -= curve.experienceForNextLevel(state.level()); final GearItemData before = state;
             state = new GearItemData(state.schemaVersion(), state.gearId(), state.profileId(), state.level() + 1, xp, lifetime);
             repository.write(item, state); Bukkit.getPluginManager().callEvent(new GearLevelUpEvent(player, item, before, state));
+            // Level-up callbacks are allowed to use the public API. Never let the outer
+            // transaction write its stale local state over a callback's newer mutation.
+            final Optional<GearItemData> callbackState = repository.read(item);
+            if (callbackState.isEmpty()) return Optional.empty();
+            state = callbackState.get();
+            xp = state.experience();
+            lifetime = state.lifetimeExperience();
         }
         state = new GearItemData(state.schemaVersion(), state.gearId(), state.profileId(), state.level(), xp, lifetime); repository.write(item, state); stats.synchronizeIfNeeded(item, state, configuration); return Optional.of(state);
     }
@@ -54,6 +61,11 @@ public final class ProgressionService implements GearMasteryApi {
         return repository.read(item).flatMap(data -> configuration.findProfile(data.profileId()).flatMap(profile -> calculateStatValue(baseValue, data, type, profile, configuration)));
     }
     public void synchronize(final ItemStack item) { repository.read(item).ifPresent(data -> stats.synchronizeIfNeeded(item, data)); }
+    public void synchronizePlayer(final Player player) {
+        for (final ItemStack item : player.getInventory().getContents()) synchronize(item);
+        for (final ItemStack item : player.getInventory().getArmorContents()) synchronize(item);
+        synchronize(player.getInventory().getItemInOffHand());
+    }
     private static GearItemData newItemData(final ItemProfile profile) { return new GearItemData(GearItemRepository.CURRENT_SCHEMA, UUID.randomUUID(), profile.id(), 0, 0, 0); }
     static GearItemData mutationBase(final Optional<GearItemData> postEventData, final ItemProfile admittedProfile) { return postEventData.orElseGet(() -> newItemData(admittedProfile)); }
     static Optional<Double> calculateStatValue(final double baseValue, final GearItemData data, final StatType type, final ItemProfile profile, final GearConfiguration configuration) {

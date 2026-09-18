@@ -20,11 +20,16 @@ public final class StatApplicationService {
     }
     public void synchronizeIfNeeded(final ItemStack item, final GearItemData data, final GearConfiguration configuration) {
         final int effectiveLevel = EffectiveStatLevel.of(data.level(), configuration.maxLevel());
-        if (repository.isStatApplicationCurrent(item, effectiveLevel, configuration.statRevision(), STAT_SCHEMA)) return;
         // A retired profile keeps its progression data, but must not retain effects from its old configuration.
         final ItemProfile profile = configuration.findProfile(data.profileId()).orElseGet(StatApplicationService::disabledProfile);
-        if (applyHandlers(handlers.handlers(), profile, item, effectiveLevel, repository,
+        final ItemStack candidate = item.clone();
+        if (applyHandlers(handlers.handlers(), profile, candidate, effectiveLevel, repository,
             (handler, exception) -> logger.warning("Could not apply " + handler.type() + " for GearMastery item " + data.gearId() + ": " + exception.getMessage()))) {
+            item.copyDataFrom(candidate, type -> type == io.papermc.paper.datacomponent.DataComponentTypes.ATTRIBUTE_MODIFIERS
+                || type == io.papermc.paper.datacomponent.DataComponentTypes.MAX_DAMAGE
+                || type == io.papermc.paper.datacomponent.DataComponentTypes.DAMAGE
+                || type == io.papermc.paper.datacomponent.DataComponentTypes.TOOL);
+            repository.copyRuntimeState(candidate, item);
             repository.markStatApplication(item, effectiveLevel, configuration.statRevision(), STAT_SCHEMA);
         }
     }

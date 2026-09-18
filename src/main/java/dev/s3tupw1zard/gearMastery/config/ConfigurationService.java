@@ -43,6 +43,7 @@ public final class ConfigurationService {
         final Map<String, RawProfile> rawProfiles = rawProfiles(items.getConfigurationSection("profiles"));
         final Map<String, ItemProfile> profiles = new LinkedHashMap<>();
         for (final String id : rawProfiles.keySet()) resolve(id, rawProfiles, profiles, new HashSet<>(), defaultCurve, globalRules);
+        validateStatRules(profiles, maxLevel);
         validateProfileCurves(profiles, curves);
         validateCurves(curves, maxLevel);
         final Map<Material, String> overrides = materialProfileMap(items.getConfigurationSection("material-overrides"));
@@ -69,6 +70,18 @@ public final class ConfigurationService {
     }
     private static void validateProfileCurves(final Map<String, ItemProfile> profiles, final Map<String, LevelingCurve> curves) {
         for (final ItemProfile profile : profiles.values()) if (!curves.containsKey(profile.curveId())) throw new IllegalArgumentException("Profile " + profile.id() + " references unknown curve " + profile.curveId());
+    }
+    private static void validateStatRules(final Map<String, ItemProfile> profiles, final int maxLevel) {
+        for (final ItemProfile profile : profiles.values()) for (final Map.Entry<StatType, StatRule> entry : profile.statRules().entrySet()) {
+            final StatRule rule = entry.getValue();
+            if (!rule.enabled()) continue;
+            if ((entry.getKey() == StatType.MINING_SPEED || entry.getKey() == StatType.DURABILITY) && rule.perLevel() < 0.0D)
+                throw new IllegalArgumentException("Stat rule " + entry.getKey() + " in profile " + profile.id() + " must not produce a negative native value");
+            final double progression = rule.perLevel() * (double) maxLevel;
+            if (!Double.isFinite(progression)) throw new IllegalArgumentException("Stat rule " + entry.getKey() + " in profile " + profile.id() + " overflows before the configured maximum level");
+            if (rule.mode() == StatScaleMode.MULTIPLICATIVE && 1.0D + progression < 0.0D) throw new IllegalArgumentException("Stat rule " + entry.getKey() + " has a negative multiplier");
+            if (rule.mode() == StatScaleMode.MULTIPLICATIVE && !Double.isFinite(1.0D + progression)) throw new IllegalArgumentException("Stat rule " + entry.getKey() + " has a non-finite multiplier");
+        }
     }
     private static void validateCurves(final Map<String, LevelingCurve> curves, final int maxLevel) {
         final int lastReachableLevel = maxLevel - 1;
@@ -123,7 +136,11 @@ public final class ConfigurationService {
             result.put(id, switch (type) {
                 case "LINEAR" -> new LinearLevelingCurve(base, nonNegative(c.getLong("growth", 0), id + ".growth"));
                 case "QUADRATIC" -> new QuadraticLevelingCurve(base, nonNegative(c.getLong("growth", 0), id + ".growth"));
-                case "EXPONENTIAL" -> new ExponentialLevelingCurve(base, Math.max(1.0D, c.getDouble("growth", 1.0D)));
+                case "EXPONENTIAL" -> {
+                    final double growth = c.getDouble("growth", 1.0D);
+                    if (!Double.isFinite(growth) || growth < 1.0D) throw new IllegalArgumentException(id + ".growth must be finite and at least 1");
+                    yield new ExponentialLevelingCurve(base, growth);
+                }
                 default -> throw new IllegalArgumentException("Unknown curve type: " + type);
             });
         }
@@ -151,7 +168,17 @@ public final class ConfigurationService {
         final ItemProfile profile = new ItemProfile(id, materials, curve, sources, rules); done.put(id, profile); visiting.remove(id); return profile;
     }
     private Set<Material> parseMaterials(final List<String> names) { final Set<Material> result = new HashSet<>(); for (final String name : names) { final Material material = Material.matchMaterial(name); if (material == null || !material.isItem()) throw new IllegalArgumentException("Invalid item material: " + name); result.add(material); } return result; }
-    static Map<StatType, StatRule> parseRules(final ConfigurationSection section) { final Map<StatType, StatRule> result = new EnumMap<>(StatType.class); if (section == null) return result; for (final String key : section.getKeys(false)) { final ConfigurationSection s = Objects.requireNonNull(section.getConfigurationSection(key)); result.put(StatType.valueOf(key.toUpperCase(Locale.ROOT)), new StatRule(s.getBoolean("enabled", true), StatScaleMode.valueOf(requireString(s, "mode").toUpperCase(Locale.ROOT)), s.getDouble("per-level"), s.getDouble("cap"))); } return result; }
+    static Map<StatType, StatRule> parseRules(final ConfigurationSection section) {
+        final Map<StatType, StatRule> result = new EnumMap<>(StatType.class); if (section == null) return result;
+        for (final String key : section.getKeys(false)) {
+            final ConfigurationSection s = Objects.requireNonNull(section.getConfigurationSection(key));
+            final double perLevel = s.getDouble("per-level"); final double cap = s.getDouble("cap");
+            if (!Double.isFinite(perLevel) || !Double.isFinite(cap)) throw new IllegalArgumentException("Stat rule " + key + " must use finite per-level and cap values");
+            if (cap < 0.0D) throw new IllegalArgumentException("Stat rule " + key + " cap must not be negative");
+            result.put(StatType.valueOf(key.toUpperCase(Locale.ROOT)), new StatRule(s.getBoolean("enabled", true), StatScaleMode.valueOf(requireString(s, "mode").toUpperCase(Locale.ROOT)), perLevel, cap));
+        }
+        return result;
+    }
     private Map<Material, String> materialProfileMap(final ConfigurationSection section) { final Map<Material, String> result = new HashMap<>(); if (section == null) return result; for (final String key : section.getKeys(false)) { final Material material = Material.matchMaterial(key); if (material == null) throw new IllegalArgumentException("Invalid override material: " + key); result.put(material, requireString(section, key)); } return result; }
     private Map<String, String> stringMap(final ConfigurationSection section) { final Map<String, String> result = new HashMap<>(); if (section != null) for (final String key : section.getKeys(false)) result.put(key, requireString(section, key)); return result; }
     private Map<Material, Long> materialLongMap(final ConfigurationSection section) { final Map<Material, Long> result = new HashMap<>(); if (section == null) return result; for (final String key : section.getKeys(false)) { final Material material = Material.matchMaterial(key); if (material == null || !material.isBlock()) throw new IllegalArgumentException("Invalid block material: " + key); result.put(material, positive(section.getLong(key), "blocks." + key)); } return result; }

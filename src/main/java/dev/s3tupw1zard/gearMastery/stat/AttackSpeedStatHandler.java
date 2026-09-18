@@ -19,7 +19,8 @@ public final class AttackSpeedStatHandler implements StatHandler {
         final var target = AttributeSlotMatcher.targetSlot(context.item()); if (target.isEmpty()) { removeOwned(existing, context.item()); return; }
         final EquipmentSlot slot = target.get(); final NamespacedKey modifierKey = GearModifierKeys.current(StatType.ATTACK_SPEED, slot);
         final var storedBaseline = repository.baselineAttackSpeedSlot(context.item()).filter(slot.name()::equals).flatMap(ignored -> repository.baselineAttackSpeedEffective(context.item()));
-        final double effectiveBaseline = storedBaseline.orElseGet(() -> {
+        final boolean ownsVisibleModifier = entries.stream().anyMatch(entry -> GearModifierKeys.owns(entry.modifier().getKey(), StatType.ATTACK_SPEED));
+        final double effectiveBaseline = storedBaseline.filter(ignored -> ownsVisibleModifier).orElseGet(() -> {
             final double captured = effectiveBaseline(entries, modifierKey, GearModifierKeys.legacy(StatType.ATTACK_SPEED), slot); return captured;
         });
         final double bonus = context.rule().enabled() ? AttributeModifierValue.requireFinite(effectiveBonus(effectiveBaseline, context.level(), context.rule()), StatType.ATTACK_SPEED) : 0.0D;
@@ -28,7 +29,7 @@ public final class AttackSpeedStatHandler implements StatHandler {
             .forEach(entry -> builder.addModifier(entry.attribute(), entry.modifier(), entry.getGroup(), entry.display()));
         if (bonus != 0.0D) builder.addModifier(Attribute.ATTACK_SPEED,
             new AttributeModifier(modifierKey, bonus, AttributeModifier.Operation.ADD_NUMBER, AttributeSlotMatcher.targetGroup(slot)));
-        if (storedBaseline.isEmpty()) { repository.baselineAttackSpeedEffective(context.item(), effectiveBaseline); repository.baselineAttackSpeedSlot(context.item(), slot.name()); }
+        if (storedBaseline.isEmpty() || !ownsVisibleModifier) { repository.baselineAttackSpeedEffective(context.item(), effectiveBaseline); repository.baselineAttackSpeedSlot(context.item(), slot.name()); }
         context.item().setData(DataComponentTypes.ATTRIBUTE_MODIFIERS, builder.build());
     }
     private static void removeOwned(final ItemAttributeModifiers existing, final org.bukkit.inventory.ItemStack item) { final ItemAttributeModifiers.Builder builder = ItemAttributeModifiers.itemAttributes(); existing.modifiers().stream().filter(entry -> !GearModifierKeys.owns(entry.modifier().getKey(), StatType.ATTACK_SPEED)).forEach(entry -> builder.addModifier(entry.attribute(), entry.modifier(), entry.getGroup(), entry.display())); item.setData(DataComponentTypes.ATTRIBUTE_MODIFIERS, builder.build()); }

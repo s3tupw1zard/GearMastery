@@ -73,6 +73,19 @@ class ConfigurationReloadValidationTest {
         }
     }
 
+    @Test void rejectsNonFiniteCurveAndStatNumbersAndKeepsTheActiveSnapshot() throws IOException {
+        for (final String invalidGrowth : List.of(".NaN", ".inf", "-.inf")) {
+            writeBase(); final ConfigurationService service = service(); assertTrue(service.reload()); final GearConfiguration active = service.current();
+            write("leveling.yml", leveling(3, "EXPONENTIAL", 10, 1).replace("growth: 1", "growth: " + invalidGrowth));
+            assertFalse(service.reload()); assertSame(active, service.current());
+        }
+        for (final String invalidPerLevel : List.of(".NaN", ".inf", "-.inf")) {
+            writeBase(); final ConfigurationService service = service(); assertTrue(service.reload()); final GearConfiguration active = service.current();
+            write("stats.yml", "config-version: 3\ndefaults:\n  DURABILITY: {enabled: true, mode: MULTIPLICATIVE, per-level: " + invalidPerLevel + ", cap: 1.5}\n");
+            assertFalse(service.reload()); assertSame(active, service.current());
+        }
+    }
+
     @Test void validatesCurveArithmeticOnlyForReachableLevelTransitions() throws IOException {
         writeBase();
         final ConfigurationService service = service(); assertTrue(service.reload());

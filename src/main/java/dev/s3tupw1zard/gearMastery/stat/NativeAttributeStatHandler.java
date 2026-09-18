@@ -21,7 +21,8 @@ public final class NativeAttributeStatHandler implements StatHandler {
         final var slot = targetSlot.get();
         final var modifierKey = GearModifierKeys.current(type, slot);
         final var storedBaseline = repository.baselineSlot(context.item(), type).filter(slot.name()::equals).flatMap(ignored -> repository.baseline(context.item(), type));
-        final double baseline = storedBaseline.orElseGet(() -> {
+        final boolean ownsVisibleModifier = entries.stream().anyMatch(entry -> GearModifierKeys.owns(entry.modifier().getKey(), type));
+        final double baseline = storedBaseline.filter(ignored -> ownsVisibleModifier).orElseGet(() -> {
             final double captured = entries.stream().filter(entry -> entry.attribute().equals(attribute))
                 .filter(entry -> !GearModifierKeys.owns(entry.modifier().getKey(), type))
                 .filter(entry -> entry.modifier().getOperation() == AttributeModifier.Operation.ADD_NUMBER)
@@ -33,7 +34,7 @@ public final class NativeAttributeStatHandler implements StatHandler {
         entries.stream().filter(entry -> !GearModifierKeys.owns(entry.modifier().getKey(), type))
             .forEach(entry -> builder.addModifier(entry.attribute(), entry.modifier(), entry.getGroup(), entry.display()));
         if (delta != 0.0D) builder.addModifier(attribute, new AttributeModifier(modifierKey, delta, AttributeModifier.Operation.ADD_NUMBER, AttributeSlotMatcher.targetGroup(slot)));
-        if (storedBaseline.isEmpty()) { repository.baseline(context.item(), type, baseline); repository.baselineSlot(context.item(), type, slot.name()); }
+        if (storedBaseline.isEmpty() || !ownsVisibleModifier) { repository.baseline(context.item(), type, baseline); repository.baselineSlot(context.item(), type, slot.name()); }
         context.item().setData(DataComponentTypes.ATTRIBUTE_MODIFIERS, builder.build());
     }
     private static void removeOwned(final ItemAttributeModifiers existing, final org.bukkit.inventory.ItemStack item, final StatType type) {

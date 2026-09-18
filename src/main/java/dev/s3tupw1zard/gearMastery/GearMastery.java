@@ -7,6 +7,7 @@ import dev.s3tupw1zard.gearMastery.config.ConfigMigrationService;
 import dev.s3tupw1zard.gearMastery.item.GearItemRepository;
 import dev.s3tupw1zard.gearMastery.level.ProgressionService;
 import dev.s3tupw1zard.gearMastery.listener.BlockBreakExperienceListener;
+import dev.s3tupw1zard.gearMastery.listener.RuntimeStatSyncListener;
 import dev.s3tupw1zard.gearMastery.stat.*;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -42,6 +43,7 @@ public final class GearMastery extends JavaPlugin {
         final ProgressionService progression = new ProgressionService(configurations, repository, new StatApplicationService(configurations, repository, handlers, getLogger()));
         getServer().getServicesManager().register(GearMasteryApi.class, progression, this, org.bukkit.plugin.ServicePriority.Normal);
         getServer().getPluginManager().registerEvents(new BlockBreakExperienceListener(configurations, progression), this);
+        getServer().getPluginManager().registerEvents(new RuntimeStatSyncListener(this, progression), this);
         final GearMasteryCommand command = new GearMasteryCommand(progression, configurations);
         Objects.requireNonNull(getCommand("gearmastery"), "Missing gearmastery command").setExecutor(command);
         Objects.requireNonNull(getCommand("gearmastery")).setTabCompleter(command);

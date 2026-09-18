@@ -71,6 +71,31 @@ public final class GearItemRepository {
     public void markStatApplication(final ItemStack item, final int currentLevel, final long revision, final int statSchema) {
         item.editPersistentDataContainer(pdc -> { pdc.set(appliedLevel, PersistentDataType.INTEGER, currentLevel); pdc.set(appliedRevision, PersistentDataType.LONG, revision); pdc.set(appliedSchema, PersistentDataType.INTEGER, statSchema); pdc.remove(appliedGeneration); });
     }
+    /** Copies only GearMastery-owned runtime state after an atomic component commit. */
+    public void copyRuntimeState(final ItemStack source, final ItemStack target) {
+        target.editPersistentDataContainer(destination -> {
+            copy(destination, source, appliedLevel, PersistentDataType.INTEGER);
+            copy(destination, source, appliedRevision, PersistentDataType.LONG);
+            copy(destination, source, appliedSchema, PersistentDataType.INTEGER);
+            copy(destination, source, appliedGeneration, PersistentDataType.LONG);
+            copy(destination, source, baselineMaxDamage, PersistentDataType.INTEGER);
+            copy(destination, source, baselineAttackSpeedEffective, PersistentDataType.DOUBLE);
+            copy(destination, source, baselineToolDefaultSpeed, PersistentDataType.FLOAT);
+            copy(destination, source, new NamespacedKey("gearmastery", "applied-tool-default-speed"), PersistentDataType.FLOAT);
+            copy(destination, source, baselineToolRuleCount, PersistentDataType.INTEGER);
+            copy(destination, source, toolRuleSnapshots, PersistentDataType.STRING);
+            for (StatType type : StatType.values()) {
+                copy(destination, source, baselineKey(type), PersistentDataType.DOUBLE);
+                copy(destination, source, new NamespacedKey("gearmastery", "baseline-slot-" + type.name().toLowerCase(java.util.Locale.ROOT)), PersistentDataType.STRING);
+            }
+            copy(destination, source, new NamespacedKey("gearmastery", "baseline-slot-attack-speed"), PersistentDataType.STRING);
+        });
+    }
+    private static <P, C> void copy(final org.bukkit.persistence.PersistentDataContainer target, final ItemStack source,
+                                    final NamespacedKey key, final PersistentDataType<P, C> type) {
+        final C value = source.getPersistentDataContainer().get(key, type);
+        if (value == null) target.remove(key); else target.set(key, type, value);
+    }
     private NamespacedKey baselineKey(final StatType type) { return new NamespacedKey("gearmastery", "baseline-" + type.name().toLowerCase(java.util.Locale.ROOT)); }
     private static NamespacedKey toolRuleKey(final String prefix, final String identity) {
         long hash = 0xcbf29ce484222325L;
