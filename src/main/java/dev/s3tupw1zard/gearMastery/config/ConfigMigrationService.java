@@ -13,6 +13,8 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.util.LinkedHashMap;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
@@ -25,9 +27,10 @@ public final class ConfigMigrationService {
         Map.entry("swords", "_gearmastery_melee_weapon"), Map.entry("axes", "_gearmastery_combat_tool"), Map.entry("pickaxes", "_gearmastery_mining_tool"),
         Map.entry("shovels", "_gearmastery_mining_tool"), Map.entry("hoes", "_gearmastery_mining_tool"), Map.entry("tridents", "_gearmastery_melee_weapon"),
         Map.entry("helmets", "_gearmastery_armor_piece"), Map.entry("chestplates", "_gearmastery_armor_piece"), Map.entry("leggings", "_gearmastery_armor_piece"), Map.entry("boots", "_gearmastery_armor_piece"));
-    private final File dataFolder; private final ResourceReader resources; private final Logger logger;
+    private final File dataFolder; private final ResourceReader resources; private final Logger logger; private final FileReplacer replacer;
     public ConfigMigrationService(final JavaPlugin plugin) { this(plugin.getDataFolder(), plugin::getResource, plugin.getLogger()); }
-    ConfigMigrationService(final File dataFolder, final ResourceReader resources, final Logger logger) { this.dataFolder = dataFolder; this.resources = resources; this.logger = logger; }
+    ConfigMigrationService(final File dataFolder, final ResourceReader resources, final Logger logger) { this(dataFolder, resources, logger, ConfigMigrationService::replaceAtomically); }
+    ConfigMigrationService(final File dataFolder, final ResourceReader resources, final Logger logger, final FileReplacer replacer) { this.dataFolder = dataFolder; this.resources = resources; this.logger = logger; this.replacer = replacer; }
     public boolean migrateInstalledConfigs() {
         try {
             final Map<String, YamlConfiguration> installed = new LinkedHashMap<>();
@@ -58,7 +61,16 @@ public final class ConfigMigrationService {
                 final Path target = new File(dataFolder, name).toPath(); final Path backup = target.resolveSibling(name + ".v" + sourceVersions.get(name) + ".bak");
                 if (!Files.exists(backup)) Files.copy(target, backup);
             }
-            for (final Map.Entry<String, Path> entry : temporary.entrySet()) replace(entry.getValue(), new File(dataFolder, entry.getKey()).toPath());
+            final List<String> replaced = new ArrayList<>();
+            try {
+                for (final Map.Entry<String, Path> entry : temporary.entrySet()) {
+                    replacer.replace(entry.getValue(), new File(dataFolder, entry.getKey()).toPath()); replaced.add(entry.getKey());
+                }
+            } catch (final IOException replaceFailure) {
+                rollbackReplacedFiles(replaced, sourceVersions, replaceFailure); throw replaceFailure;
+            } finally {
+                cleanupTemporaryFiles(temporary.values());
+            }
             logger.info("Migrated GearMastery configuration schema to version " + CURRENT_VERSION + "."); return true;
         } catch (final IOException | InvalidConfigurationException | IllegalArgumentException exception) {
             logger.log(java.util.logging.Level.SEVERE, "GearMastery configuration migration failed: " + exception.getMessage(), exception); return false;
@@ -147,7 +159,30 @@ public final class ConfigMigrationService {
             else if (!target.contains(key)) target.set(key, value);
         }
     }
-    private static void replace(final Path source, final Path target) throws IOException {
+    private void rollbackReplacedFiles(final List<String> replaced, final Map<String, Integer> sourceVersions, final IOException replaceFailure) {
+        for (int index = replaced.size() - 1; index >= 0; index--) {
+            final String name = replaced.get(index); final Path target = new File(dataFolder, name).toPath();
+            final Path backup = target.resolveSibling(name + ".v" + sourceVersions.get(name) + ".bak");
+            try {
+                final Path rollback = Files.createTempFile(target.getParent(), name, ".migration");
+                try { Files.copy(backup, rollback, StandardCopyOption.REPLACE_EXISTING); replacer.replace(rollback, target); }
+                finally {
+                    try { Files.deleteIfExists(rollback); }
+                    catch (final IOException cleanupFailure) { logger.log(java.util.logging.Level.WARNING, "GearMastery configuration migration rollback cleanup failed for " + name + ": " + cleanupFailure.getMessage(), cleanupFailure); }
+                }
+            } catch (final IOException rollbackFailure) {
+                replaceFailure.addSuppressed(rollbackFailure);
+                logger.log(java.util.logging.Level.SEVERE, "GearMastery configuration migration rollback failed for " + name + ": " + rollbackFailure.getMessage(), rollbackFailure);
+            }
+        }
+    }
+    private static void cleanupTemporaryFiles(final Iterable<Path> temporary) {
+        for (final Path path : temporary) {
+            try { Files.deleteIfExists(path); }
+            catch (final IOException ignored) { }
+        }
+    }
+    private static void replaceAtomically(final Path source, final Path target) throws IOException {
         try { Files.move(source, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE); }
         catch (final AtomicMoveNotSupportedException ignored) { Files.move(source, target, StandardCopyOption.REPLACE_EXISTING); }
     }
@@ -156,4 +191,5 @@ public final class ConfigMigrationService {
     }
     private static YamlConfiguration load(final File file) throws IOException, InvalidConfigurationException { final YamlConfiguration yaml = new YamlConfiguration(); yaml.load(file); return yaml; }
     @FunctionalInterface interface ResourceReader { InputStream open(String name); }
+    @FunctionalInterface interface FileReplacer { void replace(Path source, Path target) throws IOException; }
 }

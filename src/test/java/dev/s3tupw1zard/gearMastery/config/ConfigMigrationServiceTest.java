@@ -8,8 +8,13 @@ import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.logging.Handler;
 import java.util.logging.Logger;
+import java.util.logging.LogRecord;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -177,11 +182,59 @@ class ConfigMigrationServiceTest {
         assertTrue(service().migrateInstalledConfigs()); assertFalse(load("items.yml").contains("profiles.swords"));
     }
 
+    @Test void rollsBackEveryReplacedFileWhenALaterReplaceFails() throws Exception {
+        final String items = "profiles:\n  pickaxes:\n    items: [DIAMOND_PICKAXE]\n    xp-sources: []\n";
+        final String stats = "defaults: {}\n"; write("items.yml", items); write("stats.yml", stats);
+        final AtomicInteger replacements = new AtomicInteger();
+        final ConfigMigrationService.FileReplacer replacer = (source, target) -> {
+            if (replacements.incrementAndGet() == 2) throw new java.io.IOException("planned replacement failure");
+            Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
+        };
+        final Logger logger = Logger.getAnonymousLogger(); logger.setUseParentHandlers(false);
+        assertFalse(service(replacer, logger).migrateInstalledConfigs());
+        assertEquals(items, Files.readString(directory.resolve("items.yml"))); assertEquals(stats, Files.readString(directory.resolve("stats.yml")));
+        assertEquals(items, Files.readString(directory.resolve("items.yml.v1.bak"))); assertEquals(stats, Files.readString(directory.resolve("stats.yml.v1.bak")));
+        try (var paths = Files.list(directory)) { assertFalse(paths.anyMatch(path -> path.getFileName().toString().endsWith(".migration"))); }
+    }
+
+    @Test void keepsSuccessfulMultiFileMigrationsUnchanged() throws Exception {
+        write("items.yml", "profiles:\n  pickaxes:\n    items: [DIAMOND_PICKAXE]\n    xp-sources: []\n"); write("stats.yml", "defaults: {}\n");
+        assertTrue(service().migrateInstalledConfigs());
+        assertEquals(3, load("items.yml").getInt("config-version")); assertEquals(3, load("stats.yml").getInt("config-version"));
+        assertTrue(Files.exists(directory.resolve("items.yml.v1.bak"))); assertTrue(Files.exists(directory.resolve("stats.yml.v1.bak")));
+    }
+
+    @Test void logsBothMigrationAndRollbackFailures() throws Exception {
+        write("items.yml", "profiles:\n  pickaxes:\n    items: [DIAMOND_PICKAXE]\n    xp-sources: []\n"); write("stats.yml", "defaults: {}\n");
+        final AtomicInteger replacements = new AtomicInteger(); final ArrayList<LogRecord> records = new ArrayList<>();
+        final Logger logger = Logger.getAnonymousLogger(); logger.setUseParentHandlers(false); logger.addHandler(new Handler() {
+            @Override public void publish(final LogRecord record) { records.add(record); }
+            @Override public void flush() { }
+            @Override public void close() { }
+        });
+        final ConfigMigrationService.FileReplacer replacer = (source, target) -> {
+            final int attempt = replacements.incrementAndGet();
+            if (attempt == 2) throw new java.io.IOException("planned replacement failure");
+            if (attempt == 3) throw new java.io.IOException("planned rollback failure");
+            Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
+        };
+        assertFalse(service(replacer, logger).migrateInstalledConfigs());
+        assertTrue(records.stream().anyMatch(record -> record.getMessage().contains("rollback failed") && record.getThrown().getMessage().contains("planned rollback failure")));
+        assertTrue(records.stream().anyMatch(record -> record.getMessage().contains("migration failed") && record.getThrown().getSuppressed().length == 1 && record.getThrown().getSuppressed()[0].getMessage().contains("planned rollback failure")));
+    }
+
     private void assertInvalidVersion(final String content) throws Exception {
         write("stats.yml", content); assertFalse(service().migrateInstalledConfigs()); assertEquals(content, Files.readString(directory.resolve("stats.yml")));
     }
     private ConfigMigrationService service() {
-        final Map<String, String> defaults = Map.of("items.yml", """
+        final Logger logger = Logger.getAnonymousLogger(); logger.setUseParentHandlers(false);
+        return new ConfigMigrationService(directory.toFile(), name -> new ByteArrayInputStream(defaults().get(name).getBytes(StandardCharsets.UTF_8)), logger);
+    }
+    private ConfigMigrationService service(final ConfigMigrationService.FileReplacer replacer, final Logger logger) {
+        return new ConfigMigrationService(directory.toFile(), name -> new ByteArrayInputStream(defaults().get(name).getBytes(StandardCharsets.UTF_8)), logger, replacer);
+    }
+    private static Map<String, String> defaults() {
+        return Map.of("items.yml", """
             config-version: 3
             profiles:
               _gearmastery_mining_tool:
@@ -208,8 +261,6 @@ class ConfigMigrationServiceTest {
                 per-level: 0.005
                 cap: 1.5
             """);
-        final Logger logger = Logger.getAnonymousLogger(); logger.setUseParentHandlers(false);
-        return new ConfigMigrationService(directory.toFile(), name -> new ByteArrayInputStream(defaults.get(name).getBytes(StandardCharsets.UTF_8)), logger);
     }
     private void write(final String name, final String content) throws Exception { Files.writeString(directory.resolve(name), content); }
     private YamlConfiguration load(final String name) throws Exception { final YamlConfiguration yaml = new YamlConfiguration(); yaml.load(directory.resolve(name).toFile()); return yaml; }
